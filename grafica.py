@@ -5,9 +5,10 @@ import tkinter as tk
 from tkinter import ttk
 import re
 from datetime import datetime
+import mplcursors
 
 # Ruta del archivo
-file_path = r"C:\Users\anton\Desktop\scripts\Logs\telemetriagta5.txt"
+file_path = r"C:\Users\ejemplo\Desktop\scripts\Logs\telemetriagta5.txt"
 
 # Listas para almacenar datos
 timestamps = []
@@ -260,6 +261,42 @@ def actualizar_grafica():
 
     # Título general de la figura
     fig.suptitle(f"Circuito: {circuito}", fontsize=14, fontweight="bold")
+
+    # Ver valor en una etiqueta
+    # Para la gráfica de tiempos por vuelta (ax0)
+    cursor0 = mplcursors.cursor(ax0, hover=True)
+    cursor0.connect("add", lambda sel: sel.annotation.set_text(
+        f"Vuelta: {sel.target[0]:.0f}\nTiempo: {sel.target[1]:.2f} s"))
+
+    # Para la gráfica de deltas (ax1)
+    cursor1 = mplcursors.cursor(ax1, hover=True)
+    cursor1.connect("add", lambda sel: sel.annotation.set_text(
+        f"Vuelta: {sel.target[0]:.0f}\nDelta: {sel.target[1]:.2f} s"))
+
+    # Para la gráfica de velocidad (ax2)
+    cursor2 = mplcursors.cursor(ax2, hover=True)
+    cursor2.connect("add", lambda sel: sel.annotation.set_text(
+        f"{sel.artist.get_label()}\n Tiempo: {sel.target[0]:.2f} s\nVelocidad: {sel.target[1]:.2f} km/h"))
+
+    # Para la gráfica de freno (ax3)
+    cursor3 = mplcursors.cursor(ax3, hover=True)
+    cursor3.connect("add", lambda sel: sel.annotation.set_text(
+        f"{sel.artist.get_label()}\n Tiempo: {sel.target[0]:.2f} s\nFreno: {sel.target[1]:.2f} %"))
+
+    # Para la gráfica de RPM (ax4)
+    cursor4 = mplcursors.cursor(ax4, hover=True)
+    cursor4.connect("add", lambda sel: sel.annotation.set_text(
+        f"{sel.artist.get_label()}\n Tiempo: {sel.target[0]:.2f} s\nRPM: {sel.target[1]:.0f}"))
+
+    # Para la gráfica de Marcha (ax5)
+    cursor5 = mplcursors.cursor(ax5, hover=True)
+    cursor5.connect("add", lambda sel: sel.annotation.set_text(
+        f"{sel.artist.get_label()}\n Tiempo: {sel.target[0]:.2f} s\nMarcha: {sel.target[1]:.0f}"))
+
+    # Para el mapa 2D (ax6), mostrando la vuelta:
+    cursor6 = mplcursors.cursor(ax6, hover=True)
+    cursor6.connect("add", lambda sel: sel.annotation.set_text(sel.artist.get_label()))
+    
     canvas_fig.draw()
 
 # Crear la interfaz gráfica
