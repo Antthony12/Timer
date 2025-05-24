@@ -1,0 +1,47 @@
+Lap timer script para cualquier circuito.
+
+Contexto
+Hace una semana, estaba buscando un mod o script para cronometrar automáticamente las vueltas rápidas. El mejor que encontré fue Race Timer (https://www.gta5-mods.com/scripts/race-timer), pero está roto... así que no tuve más remedio que crear mi propio script.
+
+Intenté compilarlo pero no pude.
+
+Requisitos
+Script Hook V (https://dev-c.com/gtav/scripthookv/)
+ScriptHookVDotNet (https://github.com/scripthookvdotnet/scripthookvdotnet-nightly/releases)
+
+Instalación
+1. Extrae timer.dll y timer.ini, uno de los 2 idiomas, en tu carpeta de scripts.
+2. Modifica el archivo timer.ini:
+	- Rutas: Modifica las rutas de los archivos .txt en los cuales se guardarán las vueltas y la telemetría.
+	- Ajustes: Modifica ajustes relacionados con el script.
+		- MostrarTelemetria: Al iniciar una vuelta, encima del tiempo transcurrido se ve la telemetría del vehículo. En false se oculta.
+		- MostrarTiempoTranscurrido: Al iniciar una vuelta muestra el tiempo transcurrido en la parte inferior central de la pantalla. En false se oculta.
+		- GuardarTelemetria: Si está en true al iniciar una vuelta escribirá en el ArchivoTelemetria 4 registros por segundo de telemetría. Se recomienda 					     mantenerlo en false el máximo tiempo posible por el bien del almacenamiento del ordenador. Es independiente a MostrarTelemetria.
+		- UnidadVelocidad: Elije en que unidad de medida de velocidad quieres que muestre y guarde la telemetría.
+		- CircuitoSeleccionado: Selecciona el circuito en el que vas a dar vueltas.
+		- Tolerancia: Define el tamaño de la línea de meta y sectores. Tener en cuenta que no es una línea, sino un círculo como los puntos de control del juego 			      base. No poner f como en las versiones anteriores.
+	- ColoresTelemetria: Elige los colores de los elementos de la telemetría. 
+	- Circuitos: Por defecto hay cargados mods de circuitos reales, pero puedes añadir/eliminar todos los que quieras de forma sencilla. Para eliminar borra la línea 		     del circuito y ya está. Para añadir un circuito, en una línea nueva sigue esta plantilla:
+
+		     Nombre_Circuito=coordenadasX,coordenadasY,coordenadasZ/coordenadasX,coordenadasY,coordenadasZ/coordenadasX,coordenadasY,coordenadasZ
+
+		     Cada trio de coordenadas es un punto de control, el primero la salida y el último la meta (que tienen que ser iguales a las de la salida para empezar 		     y terminar la vuelta en el mismo sitio). Como mínimo poner 3 puntos porque con 1 y 2 comenzará y terminará la vuelta al instante, en la siguiente 			     versión si se podrá. No poner f como en las versiones anteriores.
+3. Guardar el archivo, muy importante.
+
+Una vez el juego está iniciado y se quiere modificar algo en el archivo .ini, luego de modificar y guardar recargar los scripts para aplicar los cambios. Al recargar también se cambiará de "sesión", las vueltas y los tiempos se reiniciarán.
+
+Uso
+Para comenzar a cronometrar vueltas, cruza la línea de meta/salida del circuito, que corresponden al primer trio de coordendas. Al cruzar, aparecerá una notificación indicando que la vuelta ha comenzado, y se mostrará el tiempo transcurrido y la telemetría como subtítulos, si están activadas claro.
+
+A medida que pases por los sectores aparecerá otra notificación indicando el sector, el tiempo del sector y el delta respecto a la mejor vuelta con el mismo coche en la misma sesión.
+
+Cuando cruces el último punto, aparecerá otra notificación indicando que la vuelta ha terminado junto con el tiempo y el delta de la vuelta, y la siguiente vuelta comenzará inmediatamente. Esto se repetirá de forma continua.
+
+Para detener el cronómetro y cancelar la vuelta, presiona la tecla "N", y el script no se activará nuevamente hasta que cruces la línea de meta.
+
+N: Cancelar vuelta.
+
+Conclusión
+Eso es todo. Es un script básico, es el primero que he hecho para GTA 5, pienso mejorarlo un poco más, como modificar lo visible en la telemetría y sus colores, validar que el formato de las coordenadas sean correctas y... bueno, no se me ocurre nada más por ahora.
+
+Si encuentras un error, tienes una idea o quieres ayudar, deja un comentario y te responderé cuando lo vea xddd.
