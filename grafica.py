@@ -27,6 +27,7 @@ rpm_pattern = re.compile(r"RPM: ([\d,]+)")
 gear_pattern = re.compile(r"Marcha: (\d+)")
 lap_pattern = re.compile(r"Vuelta: (\d+)")
 circuito_pattern = re.compile(r"Circuito: (.+?) \| Vuelta:")
+position_pattern = re.compile(r"Posición: \(([\d,-]+), ([\d,-]+), ([\d,-]+)\)")
 
 # Leer y procesar el archivo
 with open(file_path, "r", encoding="utf-8") as file:
@@ -42,6 +43,7 @@ with open(file_path, "r", encoding="utf-8") as file:
         rpm_match = rpm_pattern.search(line)
         gear_match = gear_pattern.search(line)
         lap_match = lap_pattern.search(line)
+        position_match = position_pattern.search(line)
 
         if timestamp_match:
             current_timestamp = timestamp_match.group(1)
@@ -77,6 +79,16 @@ with open(file_path, "r", encoding="utf-8") as file:
         if gear_match:
             gear = int(gear_match.group(1))
             lap_data[current_lap]["gears"].append(gear)
+        
+        if position_match:
+            x = float(position_match.group(1).replace(",", "."))
+            y = float(position_match.group(2).replace(",", "."))
+            z = float(position_match.group(3).replace(",", "."))
+            
+            if current_lap in lap_data:
+                if "positions" not in lap_data[current_lap]:
+                    lap_data[current_lap]["positions"] = []
+                lap_data[current_lap]["positions"].append((x, y, z))
 
 # Calcular la duración de cada punto de datos en relación al inicio de la vuelta
 for lap_number in lap_data.keys():
@@ -93,9 +105,10 @@ for lap_number in lap_data.keys():
 # Fila 5: Freno
 # Fila 6: RPM
 # Fila 7: Marcha
-fig = plt.figure(figsize=(12, 26))
-gs = gridspec.GridSpec(8, 1, height_ratios=[1, 0.1, 1, 0.1, 1, 1, 1, 1])
-plt.subplots_adjust(left=0.07, right=0.98, top=0.97, bottom=0.02, hspace=0.02)
+# Fila 8: Mapa
+fig = plt.figure(figsize=(12, 30))
+gs = gridspec.GridSpec(10, 1, height_ratios=[1, 0.2, 1, 0.2, 1, 1, 1, 1, 2, 5])
+plt.subplots_adjust(left=0.07, right=0.98, top=0.97, bottom=0, hspace=0.02)
 
 # Definir cada eje (no se crea eje para las filas en blanco)
 ax0 = fig.add_subplot(gs[0])  # Tiempos por vuelta (línea)
@@ -104,6 +117,7 @@ ax2 = fig.add_subplot(gs[4])  # Velocidad
 ax3 = fig.add_subplot(gs[5])  # Freno
 ax4 = fig.add_subplot(gs[6])  # RPM
 ax5 = fig.add_subplot(gs[7])  # Marcha
+ax6 = fig.add_subplot(gs[8])  # Mapa 2D
 
 # Función para actualizar las gráficas según las vueltas seleccionadas
 def actualizar_grafica():
@@ -111,8 +125,8 @@ def actualizar_grafica():
     if not selecciones:
         selecciones = range(len(vueltas_disponibles))
     
-    # Limpiar las gráficas
-    for ax in [ax0, ax1, ax2, ax3, ax4, ax5]:
+    # Limpiar TODOS los ejes incluyendo el nuevo
+    for ax in [ax0, ax1, ax2, ax3, ax4, ax5, ax6]:
         ax.cla()
     
     colores = plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -165,10 +179,10 @@ def actualizar_grafica():
     if lap_times:
         mejor_tiempo = min(lap_times)
         deltas = [t - mejor_tiempo for t in lap_times]
-        ax1.bar(lap_numbers_delta, deltas, color='tab:blue', alpha=0.7)
+        ax1.bar(lap_numbers_delta, deltas, color='tab:red')
     ax1.set_xlabel("Vuelta")
     ax1.set_ylabel("Delta (s)")
-    ax1.grid()
+    ax1.grid(axis="y")
 
     # Configuración de las gráficas de velocidad, freno, RPM y marcha
     for ax in [ax2, ax3, ax4, ax5]:
@@ -176,23 +190,73 @@ def actualizar_grafica():
     ax2.set_xticks([])
     ax3.set_xticks([])
     ax4.set_xticks([])
+    ax6.set_xticks([])
+    ax6.set_yticks([])
 
     ax2.set_ylabel("Velocidad (km/h)")
     ax2.grid()
-    ax2.legend()
 
     ax3.set_ylabel("Freno (%)")
     ax3.grid()
-    ax3.legend()
 
     ax4.set_ylabel("RPM")
     ax4.grid()
-    ax4.legend()
 
     ax5.set_xlabel("Duración (segundos)")
     ax5.set_ylabel("Marcha")
     ax5.grid()
-    ax5.legend()
+
+    # Dibujar el mapa 2D
+    ax6.set_aspect('equal')
+    ax6.set_facecolor('none')  # Fondo transparente
+    ax6.grid(False)
+    ax6.set_xticks([])
+    ax6.set_yticks([])
+    ax6.set_title("Trazadas")
+    for spine in ax6.spines.values():
+        spine.set_visible(False)
+    
+    # Dibujar trayectorias
+    for idx in selecciones:
+        lap_number = vueltas_disponibles[idx]
+        color = colores[idx % len(colores)]
+        
+        if "positions" in lap_data[lap_number]:
+            positions = lap_data[lap_number]["positions"]
+            x = [p[0] for p in positions]
+            y = [p[1] for p in positions]
+            
+            # Dibujar línea principal
+            ax6.plot(x, y, color=color, alpha=0.7, linewidth=2, 
+                label=f"Vuelta {lap_number}")
+            
+            # Marcar inicio/fin
+            if len(x) > 0:
+                ax6.scatter(x[0], y[0], color=color, marker='o', s=50,
+                           edgecolor='black', zorder=3)
+                ax6.scatter(x[-1], y[-1], color=color, marker='s', s=50,
+                           edgecolor='black', zorder=3)
+                
+    # Ajustar los límites del mapa 2D automáticamenten
+    if any("positions" in lap_data[lap] for lap in vueltas_disponibles):
+        all_x = [p[0] for lap in vueltas_disponibles if "positions" in lap_data[lap] for p in lap_data[lap]["positions"]]
+        all_y = [p[1] for lap in vueltas_disponibles if "positions" in lap_data[lap] for p in lap_data[lap]["positions"]]
+        
+        if all_x and all_y:
+            margin_x = (max(all_x) - min(all_x)) * 0.01  # 1% de margen en X
+            margin_y = (max(all_y) - min(all_y)) * 0.01  # 1% de margen en Y
+            
+            ax6.set_xlim(min(all_x) - margin_x, max(all_x) + margin_x)
+            ax6.set_ylim(min(all_y) - margin_y, max(all_y) + margin_y)
+
+    # Leyenda
+    ax6.legend(
+        loc='upper center', 
+        bbox_to_anchor=(0.5, -0.1),  # Ajustar posición vertical (negativo = debajo del eje)
+        ncol=7,  # Número de columnas para mejor distribución
+        frameon=True, 
+        framealpha=0.8
+    )
 
     # Título general de la figura
     fig.suptitle(f"Circuito: {circuito}", fontsize=14, fontweight="bold")
@@ -246,6 +310,8 @@ canvas.create_window((0, 0), window=frame, anchor="nw")
 canvas_fig = FigureCanvasTkAgg(fig, master=frame)
 canvas_fig.draw()
 canvas_fig.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+actualizar_grafica()
 
 # Iniciar la interfaz gráfica
 root.mainloop()
