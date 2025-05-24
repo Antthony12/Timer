@@ -76,9 +76,9 @@ for lap_number in lap_data.keys():
         t0 = lap_data[lap_number]["timestamps"][0]  # Primer timestamp de la vuelta
         lap_data[lap_number]["durations"] = [(t - t0).total_seconds() for t in lap_data[lap_number]["timestamps"]]
 
-# Función para actualizar la gráfica según la vuelta seleccionada
+# Función para actualizar la gráfica según las vueltas seleccionadas
 def actualizar_grafica():
-    seleccion = combo_vueltas.get()
+    selecciones = listbox_vueltas.curselection()  # Obtener las vueltas seleccionadas
     axs[0].cla()
     axs[1].cla()
     axs[2].cla()
@@ -87,41 +87,24 @@ def actualizar_grafica():
     # Obtener el ciclo de colores de Matplotlib
     colores = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
-    if seleccion == "Todas las vueltas":
-        for i, lap_number in enumerate(lap_data.keys()):
-            color = colores[i % len(colores)]  # Asignar un color único a cada vuelta
-            axs[0].plot(lap_data[lap_number]["durations"], lap_data[lap_number]["speeds"], color=color, alpha=0.7, label=f"Vuelta {lap_number}")
-            axs[1].plot(lap_data[lap_number]["durations"], lap_data[lap_number]["brakes"], color=color, alpha=0.7, label=f"Vuelta {lap_number}")
-            axs[2].plot(lap_data[lap_number]["durations"], lap_data[lap_number]["rpms"], color=color, alpha=0.7, label=f"Vuelta {lap_number}")
-            axs[3].plot(lap_data[lap_number]["durations"], lap_data[lap_number]["gears"], color=color, alpha=0.7, label=f"Vuelta {lap_number}")
+    if not selecciones:  # Si no hay selecciones, graficar todas las vueltas
+        selecciones = range(len(vueltas_disponibles))
 
-            # Configurar ticks solo si hay datos de marchas
-            if lap_data[lap_number]["gears"]:
-                axs[3].set_yticks(range(int(min(lap_data[lap_number]["gears"])), int(max(lap_data[lap_number]["gears"])) + 1))
+    # Calcular el inicio y fin para las vueltas seleccionadas
+    inicio = min([lap_data[vueltas_disponibles[i]]["durations"][0] for i in selecciones])
+    fin = max([lap_data[vueltas_disponibles[i]]["durations"][-1] for i in selecciones])
 
-        # Calcular el inicio y fin para todas las vueltas
-        inicio = min([lap_data[lap]["durations"][0] for lap in lap_data.keys()])
-        fin = max([lap_data[lap]["durations"][-1] for lap in lap_data.keys()])
+    for i in selecciones:
+        lap_number = vueltas_disponibles[i]
+        color = colores[i % len(colores)]  # Asignar un color único a cada vuelta
+        axs[0].plot(lap_data[lap_number]["durations"], lap_data[lap_number]["speeds"], color=color, alpha=0.7, label=f"Vuelta {lap_number}")
+        axs[1].plot(lap_data[lap_number]["durations"], lap_data[lap_number]["brakes"], color=color, alpha=0.7, label=f"Vuelta {lap_number}")
+        axs[2].plot(lap_data[lap_number]["durations"], lap_data[lap_number]["rpms"], color=color, alpha=0.7, label=f"Vuelta {lap_number}")
+        axs[3].plot(lap_data[lap_number]["durations"], lap_data[lap_number]["gears"], color=color, alpha=0.7, label=f"Vuelta {lap_number}")
 
-    else:
-        try:
-            vuelta_seleccionada = int(seleccion.split()[1])  # Extraer número de vuelta
-            color = colores[vuelta_seleccionada % len(colores)]  # Asignar un color único a la vuelta seleccionada
-            axs[0].plot(lap_data[vuelta_seleccionada]["durations"], lap_data[vuelta_seleccionada]["speeds"], color=color, label=f"Vuelta {vuelta_seleccionada}")
-            axs[1].plot(lap_data[vuelta_seleccionada]["durations"], lap_data[vuelta_seleccionada]["brakes"], color=color, label=f"Vuelta {vuelta_seleccionada}")
-            axs[2].plot(lap_data[vuelta_seleccionada]["durations"], lap_data[vuelta_seleccionada]["rpms"], color=color, label=f"Vuelta {vuelta_seleccionada}")
-            axs[3].plot(lap_data[vuelta_seleccionada]["durations"], lap_data[vuelta_seleccionada]["gears"], color=color, label=f"Vuelta {vuelta_seleccionada}")
-
-            # Configurar ticks solo si hay datos de marchas
-            if lap_data[vuelta_seleccionada]["gears"]:
-                axs[3].set_yticks(range(int(min(lap_data[vuelta_seleccionada]["gears"])), int(max(lap_data[vuelta_seleccionada]["gears"])) + 1))
-
-            # Calcular el inicio y fin para la vuelta seleccionada
-            inicio = lap_data[vuelta_seleccionada]["durations"][0]
-            fin = lap_data[vuelta_seleccionada]["durations"][-1]
-
-        except (IndexError, ValueError, KeyError):
-            print("Error: Vuelta seleccionada no válida.")
+        # Configurar ticks solo si hay datos de marchas
+        if lap_data[lap_number]["gears"]:
+            axs[3].set_yticks(range(int(min(lap_data[lap_number]["gears"])), int(max(lap_data[lap_number]["gears"])) + 1))
 
     # Ajustar los límites del eje X para que las líneas toquen el inicio y el final
     for ax in axs:
@@ -174,15 +157,20 @@ y = (alto_pantalla - alto_ventana) // 2
 # Establecer la posición de la ventana
 root.geometry(f"+{x}+{y}")
 
-# Menú desplegable para elegir vuelta
+# Frame para la lista de vueltas
 frame_control = tk.Frame(root)
 frame_control.pack(side=tk.TOP, fill=tk.X)
 
-tk.Label(frame_control, text="Selecciona vuelta:").pack(side=tk.LEFT, padx=1, pady=1)
-vueltas_disponibles = ["Todas las vueltas"] + [f"Vuelta {lap}" for lap in laps]
-combo_vueltas = ttk.Combobox(frame_control, values=vueltas_disponibles)
-combo_vueltas.current(0)
-combo_vueltas.pack(side=tk.LEFT, padx=0, pady=0)
+tk.Label(frame_control, text="Selecciona vueltas:").pack(side=tk.LEFT, padx=1, pady=1)
+
+# Crear un Listbox para seleccionar múltiples vueltas
+listbox_vueltas = tk.Listbox(frame_control, selectmode=tk.MULTIPLE)
+vueltas_disponibles = sorted(lap_data.keys())  # Lista de vueltas disponibles
+for lap in vueltas_disponibles:
+    listbox_vueltas.insert(tk.END, f"Vuelta {lap}")
+listbox_vueltas.pack(side=tk.LEFT, padx=0, pady=0)
+
+# Botón para actualizar las gráficas
 tk.Button(frame_control, text="Actualizar", command=actualizar_grafica).pack(side=tk.LEFT, padx=0, pady=0)
 
 # Crear un canvas con barra de desplazamiento vertical
