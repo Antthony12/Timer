@@ -6,7 +6,7 @@ import re
 from datetime import datetime
 
 # Ruta del archivo
-file_path = r"C:\Users\ejemplo\Desktop\scripts\Logs\telemetriagta5.txt"
+file_path = r"C:\Users\anton\Desktop\scripts\Logs\telemetriagta5.txt"
 
 # Listas para almacenar datos
 timestamps = []
@@ -16,6 +16,7 @@ rpms = []
 gears = []
 laps = []  # Lista de vueltas registradas
 lap_data = {}  # Diccionario para almacenar datos por vuelta
+circuito = "Circuito Desconocido"  # Valor por defecto
 
 # Expresiones regulares para extraer datos
 timestamp_pattern = re.compile(r"Fecha: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})")
@@ -24,13 +25,16 @@ brake_pattern = re.compile(r"Freno: ([\d,]+)%")
 rpm_pattern = re.compile(r"RPM: ([\d,]+)")
 gear_pattern = re.compile(r"Marcha: (\d+)")
 lap_pattern = re.compile(r"Vuelta: (\d+)")
-
-# Variables temporales
-current_lap = None
+circuito_pattern = re.compile(r"Circuito: (.+?) \| Vuelta:")  # Expresión regular para el nombre del circuito
 
 # Leer y procesar el archivo
 with open(file_path, "r", encoding="utf-8") as file:
     for line in file:
+        # Buscar el nombre del circuito
+        circuito_match = circuito_pattern.search(line)
+        if circuito_match:
+            circuito = circuito_match.group(1).strip()  # Extraer el nombre del circuito
+
         timestamp_match = timestamp_pattern.search(line)
         speed_match = speed_pattern.search(line)
         brake_match = brake_pattern.search(line)
@@ -44,7 +48,7 @@ with open(file_path, "r", encoding="utf-8") as file:
         if lap_match:
             lap_number = int(lap_match.group(1))
             if lap_number not in lap_data:
-                lap_data[lap_number] = {"timestamps": [], "speeds": [], "brakes": [], "rpms": [], "gears": []}
+                lap_data[lap_number] = {"timestamps": [], "speeds": [], "brakes": [], "rpms": [], "gears": [], "durations": []}
                 laps.append(lap_number)
             current_lap = lap_number
 
@@ -66,6 +70,12 @@ with open(file_path, "r", encoding="utf-8") as file:
             gear = int(gear_match.group(1))
             lap_data[current_lap]["gears"].append(gear)
 
+# Calcular la duración de cada punto de datos en relación al inicio de la vuelta
+for lap_number in lap_data.keys():
+    if lap_data[lap_number]["timestamps"]:
+        t0 = lap_data[lap_number]["timestamps"][0]  # Primer timestamp de la vuelta
+        lap_data[lap_number]["durations"] = [(t - t0).total_seconds() for t in lap_data[lap_number]["timestamps"]]
+
 # Función para actualizar la gráfica según la vuelta seleccionada
 def actualizar_grafica():
     seleccion = combo_vueltas.get()
@@ -74,66 +84,73 @@ def actualizar_grafica():
     axs[2].cla()
     axs[3].cla()
 
-    # Color fijo para todas las vueltas
-    color_fijo = "b"  # Azul
+    # Obtener el ciclo de colores de Matplotlib
+    colores = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
     if seleccion == "Todas las vueltas":
-        for lap_number in lap_data.keys():
-            axs[0].plot(lap_data[lap_number]["timestamps"], lap_data[lap_number]["speeds"], color=color_fijo, alpha=0.7)
-            axs[1].plot(lap_data[lap_number]["timestamps"], lap_data[lap_number]["brakes"], color=color_fijo, alpha=0.7)
-            axs[2].plot(lap_data[lap_number]["timestamps"], lap_data[lap_number]["rpms"], color=color_fijo, alpha=0.7)
-            axs[3].plot(lap_data[lap_number]["timestamps"], lap_data[lap_number]["gears"], color=color_fijo, alpha=0.7)
+        for i, lap_number in enumerate(lap_data.keys()):
+            color = colores[i % len(colores)]  # Asignar un color único a cada vuelta
+            axs[0].plot(lap_data[lap_number]["durations"], lap_data[lap_number]["speeds"], color=color, alpha=0.7, label=f"Vuelta {lap_number}")
+            axs[1].plot(lap_data[lap_number]["durations"], lap_data[lap_number]["brakes"], color=color, alpha=0.7, label=f"Vuelta {lap_number}")
+            axs[2].plot(lap_data[lap_number]["durations"], lap_data[lap_number]["rpms"], color=color, alpha=0.7, label=f"Vuelta {lap_number}")
+            axs[3].plot(lap_data[lap_number]["durations"], lap_data[lap_number]["gears"], color=color, alpha=0.7, label=f"Vuelta {lap_number}")
 
             # Configurar ticks solo si hay datos de marchas
             if lap_data[lap_number]["gears"]:
                 axs[3].set_yticks(range(int(min(lap_data[lap_number]["gears"])), int(max(lap_data[lap_number]["gears"])) + 1))
 
-        # Agregar líneas verticales para cada vuelta
-        for i in range(len(laps)):  # Incluir también la última vuelta
-            lap_time = lap_data[laps[i]]["timestamps"][0]  # Primer timestamp de la vuelta
-            for ax in axs:
-                ax.axvline(lap_time, color="r", linestyle="--", alpha=0.7)
-                ax.text(lap_time, ax.get_ylim()[1] * 0.9, f"Vuelta {laps[i]}", color="red", fontsize=10, rotation=45)
+        # Calcular el inicio y fin para todas las vueltas
+        inicio = min([lap_data[lap]["durations"][0] for lap in lap_data.keys()])
+        fin = max([lap_data[lap]["durations"][-1] for lap in lap_data.keys()])
 
     else:
         try:
             vuelta_seleccionada = int(seleccion.split()[1])  # Extraer número de vuelta
-            axs[0].plot(lap_data[vuelta_seleccionada]["timestamps"], lap_data[vuelta_seleccionada]["speeds"], label=f"Vuelta {vuelta_seleccionada}", color=color_fijo)
-            axs[1].plot(lap_data[vuelta_seleccionada]["timestamps"], lap_data[vuelta_seleccionada]["brakes"], label=f"Vuelta {vuelta_seleccionada}", color=color_fijo)
-            axs[2].plot(lap_data[vuelta_seleccionada]["timestamps"], lap_data[vuelta_seleccionada]["rpms"], label=f"Vuelta {vuelta_seleccionada}", color=color_fijo)
-            axs[3].plot(lap_data[vuelta_seleccionada]["timestamps"], lap_data[vuelta_seleccionada]["gears"], label=f"Vuelta {vuelta_seleccionada}", color=color_fijo)
+            color = colores[vuelta_seleccionada % len(colores)]  # Asignar un color único a la vuelta seleccionada
+            axs[0].plot(lap_data[vuelta_seleccionada]["durations"], lap_data[vuelta_seleccionada]["speeds"], color=color, label=f"Vuelta {vuelta_seleccionada}")
+            axs[1].plot(lap_data[vuelta_seleccionada]["durations"], lap_data[vuelta_seleccionada]["brakes"], color=color, label=f"Vuelta {vuelta_seleccionada}")
+            axs[2].plot(lap_data[vuelta_seleccionada]["durations"], lap_data[vuelta_seleccionada]["rpms"], color=color, label=f"Vuelta {vuelta_seleccionada}")
+            axs[3].plot(lap_data[vuelta_seleccionada]["durations"], lap_data[vuelta_seleccionada]["gears"], color=color, label=f"Vuelta {vuelta_seleccionada}")
 
             # Configurar ticks solo si hay datos de marchas
             if lap_data[vuelta_seleccionada]["gears"]:
                 axs[3].set_yticks(range(int(min(lap_data[vuelta_seleccionada]["gears"])), int(max(lap_data[vuelta_seleccionada]["gears"])) + 1))
 
+            # Calcular el inicio y fin para la vuelta seleccionada
+            inicio = lap_data[vuelta_seleccionada]["durations"][0]
+            fin = lap_data[vuelta_seleccionada]["durations"][-1]
+
         except (IndexError, ValueError, KeyError):
             print("Error: Vuelta seleccionada no válida.")
 
-    # Añadir marcas de tiempo al inicio y al final
+    # Ajustar los límites del eje X para que las líneas toquen el inicio y el final
     for ax in axs:
-        if seleccion == "Todas las vueltas":
-            inicio = lap_data[laps[0]]["timestamps"][0]
-            fin = lap_data[laps[-1]]["timestamps"][-1]
-        else:
-            inicio = lap_data[int(seleccion.split()[1])]["timestamps"][0]
-            fin = lap_data[int(seleccion.split()[1])]["timestamps"][-1]
-
-        # Ajustar límites del eje X para que las líneas toquen ambos extremos
         ax.set_xlim(inicio, fin)
+
+    # Deshabilitar las etiquetas del eje X en las gráficas de velocidad, freno y RPM
+    axs[0].set_xticks([])
+    axs[1].set_xticks([])
+    axs[2].set_xticks([])
 
     axs[0].set_ylabel("Velocidad (km/h)")
     axs[0].grid()
+    axs[0].legend()
 
     axs[1].set_ylabel("Freno (%)")
     axs[1].grid()
+    axs[1].legend()
 
     axs[2].set_ylabel("RPM")
     axs[2].grid()
+    axs[2].legend()
 
-    axs[3].set_xlabel("Tiempo")
+    axs[3].set_xlabel("Duración (segundos)")
     axs[3].set_ylabel("Marcha")
     axs[3].grid()
+    axs[3].legend()
+
+    # Añadir el título del circuito
+    fig.suptitle(f"Circuito: {circuito}", fontsize=14, fontweight="bold")
 
     canvas_fig.draw()
 
@@ -186,7 +203,7 @@ canvas.create_window((0, 0), window=frame, anchor="nw")
 fig, axs = plt.subplots(4, 1, figsize=(12, 16))
 
 # Reducir los márgenes y el espacio entre subgráficas
-plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05, hspace=0.3)
+plt.subplots_adjust(left=0.07, right=0.98, top=0.95, bottom=0.05, hspace=0.02)
 
 canvas_fig = FigureCanvasTkAgg(fig, master=frame)
 canvas_fig.draw()
