@@ -11,18 +11,18 @@ file_path = r"C:\Users\ejemplo\Desktop\scripts\Logs\telemetriagta5.txt"
 # Listas para almacenar datos
 timestamps = []
 speeds = []
-brakes = []  # Lista para almacenar el porcentaje de frenado
-rpms = []  # Lista para almacenar las revoluciones por minuto
-gears = []  # Lista para almacenar las marchas (enteros)
-lap_changes = []  # Para almacenar cambios de vuelta
+brakes = []
+rpms = []
+gears = []
 laps = []  # Lista de vueltas registradas
+lap_data = {}  # Diccionario para almacenar datos por vuelta
 
 # Expresiones regulares para extraer datos
 timestamp_pattern = re.compile(r"Fecha: (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})")
 speed_pattern = re.compile(r"Velocidad: ([\d,]+) km/h")
-brake_pattern = re.compile(r"Freno: ([\d,]+)%")  # Expresión regular para el freno
-rpm_pattern = re.compile(r"RPM: ([\d,]+)")  # Expresión regular para las RPM
-gear_pattern = re.compile(r"Marcha: (\d+)")  # Expresión regular para las marchas
+brake_pattern = re.compile(r"Freno: ([\d,]+)%")
+rpm_pattern = re.compile(r"RPM: ([\d,]+)")
+gear_pattern = re.compile(r"Marcha: (\d+)")
 lap_pattern = re.compile(r"Vuelta: (\d+)")
 
 # Variables temporales
@@ -33,9 +33,9 @@ with open(file_path, "r", encoding="utf-8") as file:
     for line in file:
         timestamp_match = timestamp_pattern.search(line)
         speed_match = speed_pattern.search(line)
-        brake_match = brake_pattern.search(line)  # Buscar datos de freno
-        rpm_match = rpm_pattern.search(line)  # Buscar datos de RPM
-        gear_match = gear_pattern.search(line)  # Buscar datos de marcha
+        brake_match = brake_pattern.search(line)
+        rpm_match = rpm_pattern.search(line)
+        gear_match = gear_pattern.search(line)
         lap_match = lap_pattern.search(line)
 
         if timestamp_match:
@@ -43,80 +43,101 @@ with open(file_path, "r", encoding="utf-8") as file:
 
         if lap_match:
             lap_number = int(lap_match.group(1))
-            if current_lap is None or lap_number != current_lap:
-                lap_changes.append(datetime.strptime(current_timestamp, "%Y-%m-%d %H:%M:%S.%f"))
+            if lap_number not in lap_data:
+                lap_data[lap_number] = {"timestamps": [], "speeds": [], "brakes": [], "rpms": [], "gears": []}
                 laps.append(lap_number)
-                current_lap = lap_number
+            current_lap = lap_number
 
         if speed_match and current_timestamp:
-            speed = float(speed_match.group(1).replace(",", "."))  # Convertir a número
-            timestamps.append(datetime.strptime(current_timestamp, "%Y-%m-%d %H:%M:%S.%f"))
-            speeds.append(speed)
+            speed = float(speed_match.group(1).replace(",", "."))
+            timestamp_obj = datetime.strptime(current_timestamp, "%Y-%m-%d %H:%M:%S.%f")
+            lap_data[current_lap]["timestamps"].append(timestamp_obj)
+            lap_data[current_lap]["speeds"].append(speed)
 
-        if brake_match and current_timestamp:  # Extraer datos de freno
-            brake = float(brake_match.group(1).replace(",", "."))  # Convertir a número
-            brakes.append(brake)
+        if brake_match:
+            brake = float(brake_match.group(1).replace(",", "."))
+            lap_data[current_lap]["brakes"].append(brake)
 
-        if rpm_match and current_timestamp:  # Extraer datos de RPM
-            rpm = float(rpm_match.group(1).replace(",", "."))  # Convertir a número
-            rpms.append(rpm)
+        if rpm_match:
+            rpm = float(rpm_match.group(1).replace(",", "."))
+            lap_data[current_lap]["rpms"].append(rpm)
 
-        if gear_match and current_timestamp:  # Extraer datos de marcha
-            gear = int(gear_match.group(1))  # Convertir a entero
-            gears.append(gear)
+        if gear_match:
+            gear = int(gear_match.group(1))
+            lap_data[current_lap]["gears"].append(gear)
 
-# Crear una figura con cuatro subgráficas (una encima de la otra)
-fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(12, 16))  # Aumentar el tamaño de la figura
+# Función para actualizar la gráfica según la vuelta seleccionada
+def actualizar_grafica():
+    seleccion = combo_vueltas.get()
+    axs[0].cla()
+    axs[1].cla()
+    axs[2].cla()
+    axs[3].cla()
 
-# Gráfica de velocidad (primera subgráfica)
-ax1.plot(timestamps, speeds, linestyle="-", color="b", label="Velocidad (km/h)")
-for i, lap_time in enumerate(lap_changes):
-    ax1.axvline(lap_time, color="r", linestyle="--", alpha=0.7)
-    ax1.text(lap_time, max(speeds) * 0.9, f"Vuelta {laps[i]}", color="red", fontsize=10, rotation=45)
-ax1.set_xticks([])
-ax1.set_ylabel("Velocidad (km/h)")
-ax1.legend()
-ax1.grid()
+    # Color fijo para todas las vueltas
+    color_fijo = "b"  # Azul
 
-# Gráfica de frenado (segunda subgráfica)
-ax2.plot(timestamps, brakes, linestyle="-", color="g", label="Freno (%)")
-for i, lap_time in enumerate(lap_changes):
-    ax2.axvline(lap_time, color="r", linestyle="--", alpha=0.7)
-    ax2.text(lap_time, max(brakes) * 0.9, f"Vuelta {laps[i]}", color="red", fontsize=10, rotation=45)
-ax2.set_xticks([])
-ax2.set_ylabel("Freno (%)")
-ax2.legend()
-ax2.grid()
+    if seleccion == "Todas las vueltas":
+        for lap_number in lap_data.keys():
+            axs[0].plot(lap_data[lap_number]["timestamps"], lap_data[lap_number]["speeds"], color=color_fijo, alpha=0.7)
+            axs[1].plot(lap_data[lap_number]["timestamps"], lap_data[lap_number]["brakes"], color=color_fijo, alpha=0.7)
+            axs[2].plot(lap_data[lap_number]["timestamps"], lap_data[lap_number]["rpms"], color=color_fijo, alpha=0.7)
+            axs[3].plot(lap_data[lap_number]["timestamps"], lap_data[lap_number]["gears"], color=color_fijo, alpha=0.7)
 
-# Gráfica de RPM (tercera subgráfica)
-ax3.plot(timestamps, rpms, linestyle="-", color="m", label="RPM")
-for i, lap_time in enumerate(lap_changes):
-    ax3.axvline(lap_time, color="r", linestyle="--", alpha=0.7)
-    ax3.text(lap_time, max(rpms) * 0.9, f"Vuelta {laps[i]}", color="red", fontsize=10, rotation=45)
-ax3.set_xticks([])
-ax3.set_ylabel("RPM")
-ax3.legend()
-ax3.grid()
+            # Configurar ticks solo si hay datos de marchas
+            if lap_data[lap_number]["gears"]:
+                axs[3].set_yticks(range(int(min(lap_data[lap_number]["gears"])), int(max(lap_data[lap_number]["gears"])) + 1))
 
-# Gráfica de marchas (cuarta subgráfica)
-ax4.plot(timestamps, gears, linestyle="-", color="c", label="Marcha")  # Línea continua sin puntos
-for i, lap_time in enumerate(lap_changes):
-    ax4.axvline(lap_time, color="r", linestyle="--", alpha=0.7)
-    ax4.text(lap_time, max(gears) * 0.9, f"Vuelta {laps[i]}", color="red", fontsize=10, rotation=45)
-ax4.set_xlabel("Tiempo")
-ax4.set_ylabel("Marcha")
-ax4.tick_params(axis='x', rotation=45)
+        # Agregar líneas verticales para cada vuelta
+        for i in range(len(laps)):  # Incluir también la última vuelta
+            lap_time = lap_data[laps[i]]["timestamps"][0]  # Primer timestamp de la vuelta
+            for ax in axs:
+                ax.axvline(lap_time, color="r", linestyle="--", alpha=0.7)
+                ax.text(lap_time, ax.get_ylim()[1] * 0.9, f"Vuelta {laps[i]}", color="red", fontsize=10, rotation=45)
 
-# Forzar que el eje Y de la gráfica de marchas muestre solo valores enteros
-ax4.set_yticks(range(int(min(gears)), int(max(gears)) + 1))
+    else:
+        try:
+            vuelta_seleccionada = int(seleccion.split()[1])  # Extraer número de vuelta
+            axs[0].plot(lap_data[vuelta_seleccionada]["timestamps"], lap_data[vuelta_seleccionada]["speeds"], label=f"Vuelta {vuelta_seleccionada}", color=color_fijo)
+            axs[1].plot(lap_data[vuelta_seleccionada]["timestamps"], lap_data[vuelta_seleccionada]["brakes"], label=f"Vuelta {vuelta_seleccionada}", color=color_fijo)
+            axs[2].plot(lap_data[vuelta_seleccionada]["timestamps"], lap_data[vuelta_seleccionada]["rpms"], label=f"Vuelta {vuelta_seleccionada}", color=color_fijo)
+            axs[3].plot(lap_data[vuelta_seleccionada]["timestamps"], lap_data[vuelta_seleccionada]["gears"], label=f"Vuelta {vuelta_seleccionada}", color=color_fijo)
 
-ax4.legend()
-ax4.grid()
+            # Configurar ticks solo si hay datos de marchas
+            if lap_data[vuelta_seleccionada]["gears"]:
+                axs[3].set_yticks(range(int(min(lap_data[vuelta_seleccionada]["gears"])), int(max(lap_data[vuelta_seleccionada]["gears"])) + 1))
 
-# Ajustar el espacio entre las subgráficas
-plt.tight_layout()
+        except (IndexError, ValueError, KeyError):
+            print("Error: Vuelta seleccionada no válida.")
 
-# Crear una ventana de Tkinter
+    # Añadir marcas de tiempo al inicio y al final
+    for ax in axs:
+        if seleccion == "Todas las vueltas":
+            inicio = lap_data[laps[0]]["timestamps"][0]
+            fin = lap_data[laps[-1]]["timestamps"][-1]
+        else:
+            inicio = lap_data[int(seleccion.split()[1])]["timestamps"][0]
+            fin = lap_data[int(seleccion.split()[1])]["timestamps"][-1]
+
+        # Ajustar límites del eje X para que las líneas toquen ambos extremos
+        ax.set_xlim(inicio, fin)
+
+    axs[0].set_ylabel("Velocidad (km/h)")
+    axs[0].grid()
+
+    axs[1].set_ylabel("Freno (%)")
+    axs[1].grid()
+
+    axs[2].set_ylabel("RPM")
+    axs[2].grid()
+
+    axs[3].set_xlabel("Tiempo")
+    axs[3].set_ylabel("Marcha")
+    axs[3].grid()
+
+    canvas_fig.draw()
+
+# Crear interfaz gráfica
 root = tk.Tk()
 root.title("Gráficas de Telemetría")
 
@@ -136,6 +157,17 @@ y = (alto_pantalla - alto_ventana) // 2
 # Establecer la posición de la ventana
 root.geometry(f"+{x}+{y}")
 
+# Menú desplegable para elegir vuelta
+frame_control = tk.Frame(root)
+frame_control.pack(side=tk.TOP, fill=tk.X)
+
+tk.Label(frame_control, text="Selecciona vuelta:").pack(side=tk.LEFT, padx=1, pady=1)
+vueltas_disponibles = ["Todas las vueltas"] + [f"Vuelta {lap}" for lap in laps]
+combo_vueltas = ttk.Combobox(frame_control, values=vueltas_disponibles)
+combo_vueltas.current(0)
+combo_vueltas.pack(side=tk.LEFT, padx=0, pady=0)
+tk.Button(frame_control, text="Actualizar", command=actualizar_grafica).pack(side=tk.LEFT, padx=0, pady=0)
+
 # Crear un canvas con barra de desplazamiento vertical
 canvas = tk.Canvas(root)
 canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -149,6 +181,12 @@ canvas.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("
 # Añadir la figura de matplotlib al canvas
 frame = ttk.Frame(canvas)
 canvas.create_window((0, 0), window=frame, anchor="nw")
+
+# Crear una figura con cuatro subgráficas
+fig, axs = plt.subplots(4, 1, figsize=(12, 16))
+
+# Reducir los márgenes y el espacio entre subgráficas
+plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05, hspace=0.3)
 
 canvas_fig = FigureCanvasTkAgg(fig, master=frame)
 canvas_fig.draw()
