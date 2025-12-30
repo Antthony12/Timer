@@ -7,6 +7,7 @@ using GTA.Math;
 using System.Windows.Forms;
 using System.IO;
 using System.Collections.Generic;
+using System.Linq;
 
 public class CronometroConSectores : Script
 {
@@ -56,10 +57,27 @@ public class CronometroConSectores : Script
     private bool mostrarTelemetria;         // Mostrar telemetría en pantalla
     private bool mostrarTiempoTranscurrido; // Mostrar tiempo transcurrido en pantalla
 
+    // Diccionario para almacenar todos los circuitos cargados
+    private Dictionary<string, List<Vector3>> circuitosCargados = new Dictionary<string, List<Vector3>>();
+    private bool cargarTodosCircuitos = true; // Bandera para controlar la carga de circuitos
+
+    // Variables para el modo de búsqueda de circuito
+    private bool modoBusquedaCircuito = false;
+    private string busquedaActual = "";
+    private List<string> circuitosFiltrados = new List<string>();
+    private int indiceSeleccion = 0;
+    private string ultimoCircuito = "";
+
+    // Inicializar lista para acumular telemetría antes de guardarla
+    private List<string> telemetriaAcumulada = new List<string>();
+
     // Constructor de la clase
     public CronometroConSectores()
     {
-        // Cargar la configuración desde el archivo .ini
+        // Cargar todos los circuitos disponibles
+        CargarTodosLosCircuitos();
+
+        // Cargar la configuración
         CargarConfiguracion();
 
         // Suscribir los eventos Tick y KeyDown
@@ -67,6 +85,94 @@ public class CronometroConSectores : Script
         KeyDown += OnKeyDown;
     }
 
+    // Función para cargar todos los circuitos desde el archivo timer.ini
+    private void CargarTodosLosCircuitos()
+    {
+        if (!cargarTodosCircuitos) return;
+
+        string configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "timer.ini");
+        if (!File.Exists(configPath))
+        {
+            Notification.PostTicker("Archivo timer.ini no encontrado.", true, true);
+            return;
+        }
+
+        string[] lines = File.ReadAllLines(configPath);
+        circuitosCargados.Clear();
+
+        bool enSeccionCircuitos = false;
+        string nombreCircuitoActual = "";
+
+        foreach (string line in lines)
+        {
+            string linea = line.Trim();
+
+            // Detectar sección de circuitos
+            if (linea.StartsWith("[Circuitos]"))
+            {
+                enSeccionCircuitos = true;
+                continue;
+            }
+            else if (linea.StartsWith("[") && enSeccionCircuitos)
+            {
+                // Salir de la sección si encontramos otra sección
+                enSeccionCircuitos = false;
+            }
+
+            if (enSeccionCircuitos && linea.Contains("="))
+            {
+                // Procesar línea de circuito
+                var partes = linea.Split('=');
+                if (partes.Length == 2)
+                {
+                    nombreCircuitoActual = partes[0].Trim();
+                    string circuitoData = partes[1].Trim();
+
+                    if (!string.IsNullOrEmpty(nombreCircuitoActual) && !nombreCircuitoActual.StartsWith(";"))
+                    {
+                        // Parsear las coordenadas del circuito
+                        List<Vector3> puntosCircuito = ParsearCoordenadasCircuito(circuitoData, nombreCircuitoActual);
+                        if (puntosCircuito.Count > 0)
+                        {
+                            circuitosCargados[nombreCircuitoActual] = puntosCircuito;
+                        }
+                    }
+                }
+            }
+        }
+
+        Notification.PostTicker("Cargados " + circuitosCargados.Count + " circuitos", true, true);
+    }
+
+    // Función para parsear las coordenadas de un circuito desde una cadena
+    private List<Vector3> ParsearCoordenadasCircuito(string circuitoData, string nombreCircuito)
+    {
+        List<Vector3> puntos = new List<Vector3>();
+        string[] puntosStr = circuitoData.Split('/');
+
+        foreach (string punto in puntosStr)
+        {
+            string[] coords = punto.Split(',');
+            if (coords.Length == 3)
+            {
+                try
+                {
+                    float x = float.Parse(coords[0].Replace('.', ','));
+                    float y = float.Parse(coords[1].Replace('.', ','));
+                    float z = float.Parse(coords[2].Replace('.', ','));
+                    puntos.Add(new Vector3(x, y, z));
+                }
+                catch (Exception ex)
+                {
+                    Notification.PostTicker("Error parseando coordenadas del circuito " + nombreCircuito + ": " + ex.Message, true, true);
+                }
+            }
+        }
+
+        return puntos;
+    }
+
+    // Función para cargar la configuración desde el archivo .ini
     private void CargarConfiguracion()
     {
         // Ruta del archivo .ini
@@ -104,43 +210,50 @@ public class CronometroConSectores : Script
 
         // Leer circuito seleccionado
         circuitoSeleccionado = ObtenerValorIni(lines, "Ajustes", "CircuitoSeleccionado", "Nurburgring Nordschleife");
+        ultimoCircuito = circuitoSeleccionado; // Almacenar el último circuito seleccionado
 
         // Leer los puntos del circuito seleccionado
-        string circuitoData = ObtenerValorIni(lines, "Circuitos", circuitoSeleccionado);
-
-        if (!string.IsNullOrEmpty(circuitoData))
+        if (circuitosCargados.ContainsKey(circuitoSeleccionado))
         {
-            puntosDeControl.Clear();
-            string[] puntos = circuitoData.Split('/');
-            foreach (string punto in puntos)
-            {
-                string[] coords = punto.Split(',');
-                if (coords.Length == 3)
-                {
-                    float x = float.Parse(coords[0].Replace('.', ','));
-                    float y = float.Parse(coords[1].Replace('.', ','));
-                    float z = float.Parse(coords[2].Replace('.', ','));
-                    puntosDeControl.Add(new Vector3(x, y, z));
-                }
-                else
-                {
-                    Notification.PostTicker("Coordenadas no validas" + coords, true, true);
-                }
-            }
-
+            puntosDeControl = new List<Vector3>(circuitosCargados[circuitoSeleccionado]);
             Notification.PostTicker("Circuito seleccionado: " + circuitoSeleccionado, true, true);
         }
         else
         {
-            Notification.PostTicker("Circuito " + circuitoSeleccionado + " no encontrado en timer.ini", true, true);
+            Notification.PostTicker("Circuito " + circuitoSeleccionado + " no encontrado", true, true);
+            // Seleccionar el primer circuito disponible si el configurado no existe
+            if (circuitosCargados.Count > 0)
+            {
+                circuitoSeleccionado = circuitosCargados.Keys.First();
+                puntosDeControl = new List<Vector3>(circuitosCargados[circuitoSeleccionado]);
+                Notification.PostTicker("Usando circuito: " + circuitoSeleccionado, true, true);
+            }
         }
 
         // Leer la tolerancia desde el archivo .ini
         string toleranciaStr = ObtenerValorIni(lines, "Ajustes", "Tolerancia");
         tolerancia = float.Parse(toleranciaStr.Replace('.', ','));
+
+        // Eliminar la última línea de los archivos si es un registro de inicio
+        BorrarUltimaLinea();
+
+        // Inicializar la sesión de vueltas
+        using (StreamWriter sw = new StreamWriter(rutaArchivo, true))
+        {
+            sw.WriteLine("\n=== Registro de vueltas iniciado " + DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss.fff") + " " + circuitoSeleccionado + " ===");
+        }
+
+        if (guardarTelemetria)
+        {
+            // Inicializar la sesión de telemetría
+            using (StreamWriter sw = new StreamWriter(rutaArchivoTelemetria, true))
+            {
+                sw.WriteLine("\n=== Telemetría iniciada " + DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss.fff") + " " + circuitoSeleccionado + " ===");
+            }
+        }
     }
 
-    // Método auxiliar para obtener valores del archivo .ini
+    // Función auxiliar para obtener valores del archivo .ini
     private string ObtenerValorIni(string[] lines, string section, string key, string valorPorDefecto = "")
     {
         bool dentroSeccion = false;
@@ -169,9 +282,17 @@ public class CronometroConSectores : Script
         return valorPorDefecto;  // Retornar el valor por defecto si no se encuentra
     }
 
-    // Método que se ejecuta en cada fotograma del juego
+    // Función que se ejecuta en cada fotograma del juego
     private void OnTick(object sender, EventArgs e)
     {
+        // Deshabilitar controles del juego si estamos en modo búsqueda
+        if (modoBusquedaCircuito)
+        {
+            Game.DisableAllControlsThisFrame();
+            // Permitir solo controles de cámara si quieres
+            Game.EnableControlThisFrame(GTA.Control.LookUpDown);
+            Game.EnableControlThisFrame(GTA.Control.LookLeftRight);
+        }
 
         // Obtener la posición actual del jugador
         Vector3 posicionJugador = Game.Player.Character.Position;
@@ -215,7 +336,7 @@ public class CronometroConSectores : Script
                 }
                 else if (deltaSector < TimeSpan.Zero)
                 {
-                    mensajeDeltaSector = "~g~¡Mejor tiempo en este sector! Mejoraste: " + FormatearTiempo(-deltaSector) + "~s~";
+                    mensajeDeltaSector = "~g~¡Mejor tiempo en este sector! Has mejorado: " + FormatearTiempo(-deltaSector) + "~s~";
                 }
                 else
                 {
@@ -254,7 +375,7 @@ public class CronometroConSectores : Script
                     }
                     else if (deltaVuelta < TimeSpan.Zero)
                     {
-                        mensajeDeltaVuelta = "~g~¡Nuevo récord! Mejoraste: " + FormatearTiempo(-deltaVuelta) + "~s~";
+                        mensajeDeltaVuelta = "~g~¡Nuevo récord! Has mejorado: " + FormatearTiempo(-deltaVuelta) + "~s~";
                     }
                     else
                     {
@@ -271,6 +392,26 @@ public class CronometroConSectores : Script
 
                     // Guardar tiempos en archivo
                     GuardarTiemposEnArchivo(tiempoTotalVuelta, deltaVuelta);
+
+                    // Guardar telemetría en archivo si está habilitado
+                    if (guardarTelemetria && telemetriaAcumulada.Count > 0)
+                    {
+                        try
+                        {
+                            using (StreamWriter sw = new StreamWriter(rutaArchivoTelemetria, true))
+                            {
+                                foreach (string linea in telemetriaAcumulada)
+                                {
+                                    sw.WriteLine(linea);
+                                }
+                            }
+                            telemetriaAcumulada.Clear();
+                        }
+                        catch (Exception ex)
+                        {
+                            Notification.PostTicker("Error al guardar la telemetría: " + ex.Message, true, true);
+                        }
+                    }
                     tiemposDeSectores.Clear();
                     indicePuntoActual = 0;
                 }
@@ -308,6 +449,7 @@ public class CronometroConSectores : Script
                 );
             }
 
+            // Añadir tiempo transcurrido si está habilitado
             if (mostrarTiempoTranscurrido)
             {
                 TimeSpan tiempoActual = cronometro.Elapsed;
@@ -323,12 +465,12 @@ public class CronometroConSectores : Script
             // Guardar telemetría en archivo si está habilitado
             if (guardarTelemetria)
             {
-                GuardarTelemetriaEnArchivo();
+                AcumularTelemetria();
             }
         }
     }
 
-    // Método para obtener el mejor tiempo de un sector para un vehículo
+    // Función para obtener el mejor tiempo de un sector para un vehículo
     private TimeSpan ObtenerMejorTiempoSector(string vehiculo, int indiceSector)
     {
         if (mejoresTiemposPorSectorPorVehiculo.ContainsKey(vehiculo) && mejoresTiemposPorSectorPorVehiculo[vehiculo].Count > indiceSector)
@@ -338,7 +480,7 @@ public class CronometroConSectores : Script
         return TimeSpan.Zero;
     }
 
-    // Método para actualizar el mejor tiempo de un sector para un vehículo
+    // Función para actualizar el mejor tiempo de un sector para un vehículo
     private void ActualizarMejorTiempoSector(string vehiculo, int indiceSector, TimeSpan tiempo)
     {
         if (!mejoresTiemposPorSectorPorVehiculo.ContainsKey(vehiculo))
@@ -354,21 +496,355 @@ public class CronometroConSectores : Script
         mejoresTiemposPorSectorPorVehiculo[vehiculo][indiceSector] = tiempo;
     }
 
-    // Método que se ejecuta cuando se presiona una tecla
+    // Función para controlar inputs del teclado
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
+        // Cancelar vuelta con la tecla N
         if (e.KeyCode == Keys.N && cronometroActivo)
         {
-            // Cancelar la vuelta si se presiona la tecla N
             cronometro.Stop();
             cronometroActivo = false;
             tiemposDeSectores.Clear();
+            tiempoUltimoPunto = TimeSpan.Zero;
             indicePuntoActual = 0;
+            telemetriaAcumulada.Clear();
             Notification.PostTicker("¡Vuelta cancelada!", true, true);
+        }
+
+        // Iniciar O SALIR de búsqueda de circuito con Ctrl + B
+        if (e.KeyCode == Keys.B && e.Control)
+        {
+            if (modoBusquedaCircuito)
+            {
+                // Si ya está en modo búsqueda, salir
+                modoBusquedaCircuito = false;
+                Screen.ShowSubtitle("");
+                Notification.PostTicker("Modo búsqueda desactivado", true, true);
+            }
+            else
+            {
+                // Si no está en modo búsqueda, entrar
+                IniciarBusquedaCircuito();
+            }
+            e.Handled = true; // Evitar que la 'B' se procese después
+            return; // Salir de la función para que no procese la 'B' como entrada
+        }
+
+        // Controlar entrada durante la búsqueda
+        if (modoBusquedaCircuito)
+        {
+            ControlarBusquedaCircuito(e);
         }
     }
 
-    // Método para guardar los tiempos en un archivo de texto
+    // Función para iniciar el modo de búsqueda de circuito
+    private void IniciarBusquedaCircuito()
+    {
+        modoBusquedaCircuito = true;
+        busquedaActual = "";
+        circuitosFiltrados = new List<string>(circuitosCargados.Keys);
+        indiceSeleccion = 0;
+
+        ActualizarDisplayBusqueda();
+
+        Notification.PostTicker("Modo búsqueda activado. Usa Ctrl+B para salir", true, true);
+    }
+
+    // Función para controlar  la entrada durante la búsqueda de circuito
+    private void ControlarBusquedaCircuito(KeyEventArgs e)
+    {
+        // IGNORAR teclas de control (Ctrl, Alt, Shift solos)
+        if (e.KeyCode == Keys.ControlKey || e.KeyCode == Keys.Menu || e.KeyCode == Keys.ShiftKey ||
+            e.KeyCode == Keys.LControlKey || e.KeyCode == Keys.RControlKey ||
+            e.KeyCode == Keys.LMenu || e.KeyCode == Keys.RMenu ||
+            e.KeyCode == Keys.LShiftKey || e.KeyCode == Keys.RShiftKey)
+        {
+            return; // No hacer nada con teclas de control solas
+        }
+
+        // Marcar la tecla como manejada para evitar que GTA la procese
+        e.Handled = true;
+
+        if (e.KeyCode == Keys.Back)
+        {
+            if (busquedaActual.Length > 0)
+            {
+                busquedaActual = busquedaActual.Substring(0, busquedaActual.Length - 1);
+                ActualizarFiltroBusqueda();
+            }
+        }
+        else if (e.KeyCode == Keys.Enter)
+        {
+            if (circuitosFiltrados.Count > 0 && indiceSeleccion < circuitosFiltrados.Count)
+            {
+                CambiarCircuito(circuitosFiltrados[indiceSeleccion]);
+            }
+            modoBusquedaCircuito = false;
+            Screen.ShowSubtitle("");
+        }
+        else if (e.KeyCode == Keys.NumPad8 || e.KeyCode == Keys.Up)
+        {
+            indiceSeleccion = Math.Max(0, indiceSeleccion - 1);
+            ActualizarDisplayBusqueda();
+        }
+        else if (e.KeyCode == Keys.NumPad2 || e.KeyCode == Keys.Down)
+        {
+            indiceSeleccion = Math.Min(circuitosFiltrados.Count - 1, indiceSeleccion + 1);
+            ActualizarDisplayBusqueda();
+        }
+        else if (e.KeyCode >= Keys.A && e.KeyCode <= Keys.Z && !e.Shift)
+        {
+            // Letras minúsculas
+            busquedaActual += (char)('a' + (e.KeyCode - Keys.A));
+            ActualizarFiltroBusqueda();
+        }
+        else if (e.KeyCode >= Keys.A && e.KeyCode <= Keys.Z && e.Shift)
+        {
+            // Letras mayúsculas
+            busquedaActual += (char)('A' + (e.KeyCode - Keys.A));
+            ActualizarFiltroBusqueda();
+        }
+        else if (e.KeyCode == Keys.Space)
+        {
+            busquedaActual += " ";
+            ActualizarFiltroBusqueda();
+        }
+        else if (e.KeyCode == Keys.OemMinus || e.KeyCode == Keys.Subtract)
+        {
+            busquedaActual += "-";
+            ActualizarFiltroBusqueda();
+        }
+        else if (e.KeyCode == Keys.OemQuestion && e.Shift)
+        {
+            busquedaActual += "?";
+            ActualizarFiltroBusqueda();
+        }
+        else if (e.KeyCode == Keys.OemPeriod || e.KeyCode == Keys.Decimal)
+        {
+            busquedaActual += ".";
+            ActualizarFiltroBusqueda();
+        }
+        else if (e.KeyCode == Keys.Oemcomma)
+        {
+            busquedaActual += ",";
+            ActualizarFiltroBusqueda();
+        }
+        else if (e.KeyCode == Keys.D0 || e.KeyCode == Keys.NumPad0)
+        {
+            busquedaActual += "0";
+            ActualizarFiltroBusqueda();
+        }
+        else if (e.KeyCode >= Keys.D1 && e.KeyCode <= Keys.D9)
+        {
+            busquedaActual += (char)('1' + (e.KeyCode - Keys.D1));
+            ActualizarFiltroBusqueda();
+        }
+        // Añadir soporte para guión bajo (importante para nombres como "Fujimi_Kaido")
+        else if (e.KeyCode == Keys.Oemtilde || e.KeyCode == Keys.Oem8)
+        {
+            busquedaActual += "_";
+            ActualizarFiltroBusqueda();
+        }
+        else
+        {
+            // Si no es una tecla que manejamos, no la marcamos como manejada
+            e.Handled = false;
+        }
+    }
+
+    // Función para cambiar de circuito
+    private void CambiarCircuito(string nombreCircuito)
+    {
+        if (circuitosCargados.ContainsKey(nombreCircuito))
+        {
+            // Si el cronómetro está activo, cancelar la vuelta actual
+            if (cronometroActivo)
+            {
+                cronometro.Stop();
+                cronometroActivo = false;
+                Notification.PostTicker("¡Vuelta cancelada al cambiar de circuito!", true, true);
+            }
+
+            // Limpiar datos
+            tiemposDeSectores.Clear();
+            telemetriaAcumulada.Clear();
+            mejoresTiemposPorSectorPorVehiculo.Clear();
+            mejoresVueltasPorVehiculo.Clear();
+            tiempoUltimoPunto = TimeSpan.Zero;
+            indicePuntoActual = 0;
+
+            // Cambiar los puntos de control
+            puntosDeControl = new List<Vector3>(circuitosCargados[nombreCircuito]);
+
+            // Solo escribir líneas de inicio si el circuito ha cambiado
+            if (circuitoSeleccionado != nombreCircuito)
+            {
+                // Guardar telemetría pendiente del circuito anterior
+                if (guardarTelemetria && telemetriaAcumulada.Count > 0)
+                {
+                    try
+                    {
+                        using (StreamWriter sw = new StreamWriter(rutaArchivoTelemetria, true))
+                        {
+                            foreach (string linea in telemetriaAcumulada)
+                            {
+                                sw.WriteLine(linea);
+                            }
+                        }
+                        telemetriaAcumulada.Clear();
+                    }
+                    catch (Exception ex)
+                    {
+                        Notification.PostTicker("Error al guardar telemetría: " + ex.Message, true, true);
+                    }
+                }
+
+                // Eliminar la última línea de los archivos si es un registro de inicio
+                BorrarUltimaLinea();
+
+                if (guardarTelemetria)
+                {
+                    // Escribir nueva sesión en archivo de telemetría
+                    using (StreamWriter sw = new StreamWriter(rutaArchivoTelemetria, true))
+                    {
+                        sw.WriteLine("\n=== Telemetría iniciada " + DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss.fff") + " " + nombreCircuito + " ===");
+                    }
+                }
+
+                // Escribir nueva sesión en archivo de vueltas
+                using (StreamWriter sw = new StreamWriter(rutaArchivo, true))
+                {
+                    sw.WriteLine("\n=== Registro de vueltas iniciado " + DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss.fff") + " " + nombreCircuito + " ===");
+                }
+            }
+
+            circuitoSeleccionado = nombreCircuito;
+
+            // Reiniciar el contador de vueltas
+            numeroVuelta = 0;
+
+            Notification.PostTicker("Circuito cambiado a: " + nombreCircuito, true, true);
+            Notification.PostTicker("Puntos de control: " + puntosDeControl.Count, true, true);
+        }
+        else
+        {
+            Notification.PostTicker("Circuito '" + nombreCircuito + "' no encontrado", true, true);
+            Notification.PostTicker("Circuitos disponibles:", true, true);
+
+            // Mostrar algunos circuitos disponibles
+            int count = 0;
+            foreach (string circuito in circuitosCargados.Keys)
+            {
+                if (count < 5) // Mostrar solo los primeros 5 para no saturar
+                {
+                    Notification.PostTicker("  " + circuito, true, true);
+                    count++;
+                }
+            }
+            if (circuitosCargados.Count > 5)
+            {
+                Notification.PostTicker("  ... y " + (circuitosCargados.Count - 5) + " más", true, true);
+            }
+        }
+    }
+
+    // Función para borrar la última línea de los archivos si es un registro de inicio
+    private void BorrarUltimaLinea()
+    {
+        // Si la última línea del archivo de vueltas es un registro de vuelta, borrarla
+        if (File.Exists(rutaArchivo) && new FileInfo(rutaArchivo).Length > 0)
+        {
+            // Leer las líneas del archivo de vueltas
+            var lineas = File.ReadAllLines(rutaArchivo).ToList();
+            if (lineas.Count > 0 && lineas[lineas.Count - 1].StartsWith("=== Registro de vueltas iniciado"))
+            {
+                // Eliminar la última línea
+                lineas.RemoveAt(lineas.Count - 1);
+
+                // Si la nueva última línea está en blanco, también eliminarla
+                if (lineas.Count > 0 && string.IsNullOrWhiteSpace(lineas[lineas.Count - 1]))
+                {
+                    lineas.RemoveAt(lineas.Count - 1);
+                }
+
+                // Escribir las líneas restantes de nuevo en el archivo
+                File.WriteAllLines(rutaArchivo, lineas);
+            }
+        }
+
+        // Si la última línea del archivo de telemetría es un registro de telemetría, borrarla
+        if (File.Exists(rutaArchivoTelemetria) && new FileInfo(rutaArchivoTelemetria).Length > 0)
+        {
+            // Leer las líneas del archivo de telemetría
+            var lineas = File.ReadAllLines(rutaArchivoTelemetria).ToList();
+            // Si la última línea es un registro de telemetría, eliminarla
+            if (lineas.Count > 0 && lineas[lineas.Count - 1].StartsWith("=== Telemetría iniciada"))
+            {
+                // Eliminar la última línea
+                lineas.RemoveAt(lineas.Count - 1);
+
+                // Si la nueva última línea está en blanco, también eliminarla
+                if (lineas.Count > 0 && string.IsNullOrWhiteSpace(lineas[lineas.Count - 1]))
+                {
+                    lineas.RemoveAt(lineas.Count - 1);
+                }
+
+                // Escribir las líneas restantes de nuevo en el archivo
+                File.WriteAllLines(rutaArchivoTelemetria, lineas);
+            }
+        }
+    }
+
+    // Función para actualizar el filtro de búsqueda basado en la entrada del usuario
+    private void ActualizarFiltroBusqueda()
+    {
+        if (string.IsNullOrEmpty(busquedaActual))
+        {
+            circuitosFiltrados = new List<string>(circuitosCargados.Keys);
+        }
+        else
+        {
+            circuitosFiltrados = circuitosCargados.Keys
+                .Where(c => c.ToLower().Contains(busquedaActual.ToLower()))
+                .ToList();
+        }
+        indiceSeleccion = circuitosFiltrados.Count > 0 ? 0 : -1;
+        ActualizarDisplayBusqueda();
+    }
+
+    // Función para actualizar el display de búsqueda en pantalla
+    private void ActualizarDisplayBusqueda()
+    {
+        string display = "~b~BUSCAR CIRCUITO:~s~" + busquedaActual + "_\n\n";
+
+        if (circuitosFiltrados.Count == 0)
+        {
+            display += "~r~No se encontraron circuitos~s~\n";
+        }
+        else
+        {
+            int inicio = Math.Max(0, indiceSeleccion - 2);
+            int fin = Math.Min(circuitosFiltrados.Count, inicio + 5);
+
+            for (int i = inicio; i < fin; i++)
+            {
+                string prefijo = (i == indiceSeleccion) ? "» " : "  ";
+                string nombre = circuitosFiltrados[i];
+                display += prefijo + nombre + "\n";
+            }
+
+            if (circuitosFiltrados.Count > 5)
+            {
+                display += "\n~y~Mostrando " + (inicio + 1) + "-" + fin + " de " + circuitosFiltrados.Count + "~s~";
+            }
+        }
+
+        display += "\n\n~g~↑↓: Navegar | Enter: Seleccionar | Ctrl+B: Cancelar~s~";
+
+        Screen.ShowSubtitle(display, 100000);
+    }
+
+    // Función para guardar los tiempos en un archivo de texto
     private void GuardarTiemposEnArchivo(TimeSpan tiempoTotalVuelta, TimeSpan deltaVuelta)
     {
         try
@@ -382,7 +858,7 @@ public class CronometroConSectores : Script
             using (StreamWriter sw = new StreamWriter(rutaArchivo, true))
             {
                 sw.WriteLine("=======================");
-                sw.WriteLine("Vuelta " + numeroVuelta + " - Fecha: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff"));
+                sw.WriteLine("Vuelta " + numeroVuelta + " - Fecha: " + DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss.fff"));
                 sw.WriteLine("=======================");
                 sw.WriteLine("  Circuito: " + circuitoSeleccionado);
                 sw.WriteLine("  Vehículo: " + vehiculoUtilizado);
@@ -402,30 +878,28 @@ public class CronometroConSectores : Script
         }
     }
 
-    private void GuardarTelemetriaEnArchivo()
+    // Función para acumular la telemetría en una lista
+    private void AcumularTelemetria()
     {
         try
         {
-            using (StreamWriter sw = new StreamWriter(rutaArchivoTelemetria, true))
-            {
-                sw.WriteLine(string.Format("Telemetría | Fecha: {0} | Circuito: {1} | Vuelta: {2}", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff"), circuitoSeleccionado, numeroVuelta));
-                sw.WriteLine(string.Format("  Velocidad: {0:F1} {1}", velocidad, unidadVelocidad == "mph" ? "mph" : "km/h"));
-                sw.WriteLine(string.Format("  RPM: {0:F0}", rpm));
-                sw.WriteLine(string.Format("  Marcha: {0}", marcha));
-                sw.WriteLine(string.Format("  Freno: {0:F0}%", freno * 100));
-                sw.WriteLine(string.Format("  Nivel de combustible: {0:F1}%", fuelLevel));
-                sw.WriteLine(string.Format("  Posición: ({0:F2}, {1:F2}, {2:F2})", Game.Player.Character.Position.X, Game.Player.Character.Position.Y, Game.Player.Character.Position.Z));
-                sw.WriteLine(string.Format("  Dirección: ({0:F2}, {1:F2}, {2:F2})", forwardVector.X, forwardVector.Y, forwardVector.Z));
-                sw.WriteLine(string.Format("  4 ruedas en el suelo: {0}", isOnAllWheels));
-            }
+            telemetriaAcumulada.Add(string.Format("Telemetría | Fecha: {0} | Circuito: {1} | Vuelta: {2}", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss.fff"), circuitoSeleccionado, numeroVuelta));
+            telemetriaAcumulada.Add(string.Format("  Velocidad: {0:F1} {1}", velocidad, unidadVelocidad == "mph" ? "mph" : "km/h"));
+            telemetriaAcumulada.Add(string.Format("  RPM: {0:F0}", rpm));
+            telemetriaAcumulada.Add(string.Format("  Marcha: {0}", marcha));
+            telemetriaAcumulada.Add(string.Format("  Freno: {0:F0}%", freno * 100));
+            telemetriaAcumulada.Add(string.Format("  Nivel de combustible: {0:F1}%", fuelLevel));
+            telemetriaAcumulada.Add(string.Format("  Posición: ({0:F2}, {1:F2}, {2:F2})", Game.Player.Character.Position.X, Game.Player.Character.Position.Y, Game.Player.Character.Position.Z));
+            telemetriaAcumulada.Add(string.Format("  Dirección: ({0:F2}, {1:F2}, {2:F2})", forwardVector.X, forwardVector.Y, forwardVector.Z));
+            telemetriaAcumulada.Add(string.Format("  4 ruedas en el suelo: {0}", isOnAllWheels));
         }
         catch (Exception ex)
         {
-            Notification.PostTicker("Error al guardar la telemetría: " + ex.Message, true, true);
+            Notification.PostTicker("Error al acumular la telemetría: " + ex.Message, true, true);
         }
     }
 
-    // Método para obtener el nombre del vehículo actual
+    // Función para obtener el nombre del vehículo actual
     private string ObtenerNombreVehiculo()
     {
         if (Game.Player.Character.IsInVehicle())
@@ -436,7 +910,7 @@ public class CronometroConSectores : Script
         return "A pie";
     }
 
-    // Método para formatear un TimeSpan en un string legible
+    // Función para formatear un TimeSpan en un string legible
     private string FormatearTiempo(TimeSpan tiempo)
     {
         // Verificar si el tiempo es negativo
@@ -453,7 +927,7 @@ public class CronometroConSectores : Script
             tiempo.Seconds,
             tiempo.Milliseconds);
 
-        // Agregar el signo negativo si es necesario
+        // Añadir el signo negativo si es necesario
         if (esNegativo)
         {
             tiempoFormateado = "-" + tiempoFormateado;
@@ -462,6 +936,7 @@ public class CronometroConSectores : Script
         return tiempoFormateado;
     }
 
+    // Función para actualizar la telemetría del vehículo
     private void ActualizarTelemetria()
     {
         if (Game.Player.Character.IsInVehicle())
@@ -499,7 +974,7 @@ public class CronometroConSectores : Script
         }
     }
 
-    // Método para crear una barra de progreso usando caracteres
+    // Función para crear una barra de progreso usando caracteres
     private string CrearBarra(float valor, int longitud)
     {
         int cantidad = (int)(valor * longitud);
