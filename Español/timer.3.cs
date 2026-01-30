@@ -8,6 +8,7 @@ using System.Windows.Forms;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
+using GTA.Chrono;
 
 public class CronometroConSectores : Script
 {
@@ -34,19 +35,55 @@ public class CronometroConSectores : Script
     private string vehiculoUtilizado = "A pie";         // Nombre del vehículo utilizado
 
     // Telemetría
-    private float freno;            // Porcentaje de presión en el freno (0.0 a 1.0)
-    private float rpm;              // Revoluciones por minuto del motor
-    private int marcha;             // Marcha actual del vehículo
-    private float velocidad;        // Velocidad
-    private string unidadVelocidad; // Unidad de velocidad
-    private Vector3 forwardVector;  // Dirección del vehículo
-    private bool isOnAllWheels;     // 4 ruedas en el suelo
-    private float fuelLevel;        // Nivel de combustible
-    private bool guardarTelemetria; // Guardar telemetría en archivo
-    private string colorFreno;      // Color para la barra de freno
-    private string colorRPM;        // Color para la barra de RPM
-    private string colorMarcha;     // Color para las marchas
-    private string colorVelocidad;  // Color para la velocidad
+    // https://github.com/scripthookvdotnet/scripthookvdotnet/blob/main/source/scripting_v3/GTA/Entities/Vehicles/Vehicle.cs
+    private float pedalAcelerador;          // Posición del pedal del acelerador (0.0 a 1.0)
+    private float acelerador;               // Porcentaje de presión en el acelerador (0.0 a 1.0)
+    private float freno;                    // Porcentaje de presión en el freno (0.0 a 1.0)
+    private float rpm;                      // Revoluciones por minuto del motor
+    private float embrague;                 // Porcentaje de presión en el embrague (0.0 a 1.0)
+    private int marcha;                     // Marcha actual del vehículo
+    private bool frenoMano;                 // Freno de mano activado
+    private float anguloGiro;               // Ángulo de giro de la dirección
+    private float turbo;                    // Nivel de turbo
+    private float velocidad;                // Velocidad
+    private float velocidadRuedas;          // Velocidad de las ruedas
+    private Vector3 velocidad2;             // Velocidad vectorial
+    private Vector3 forwardVector;          // Dirección del vehículo
+    private bool todasRuedasTocandoSuelo;   // 4 ruedas en el suelo
+    private float nivelCombustible;         // Nivel de combustible
+    private float nivelAceite;              // Nivel de aceite
+    private float temperaturaMotor;         // Temperatura del motor
+    private bool cocheDetenido;             // Si el coche está detenido
+    private bool coheteActivado;            // Si el cohete está activado
+    private bool motorArrancando;           // Si el cohete está activado
+    private bool motorEncendido;            // Si el cohete está activado
+    private bool lucesEncendidas;           // Si las luces están encendidas
+    private bool lucesLargasEncendidas;     // Si las luces largas están encendidas
+    private bool intermitenteIzquierdo;     // Si el intermitente izquierdo está activado
+    private bool intermitenteDerecho;       // Si el intermitente derecho está activado
+
+    private float nivelSuciedad;            // Nivel de suciedad del vehículo
+
+    private float saludMotor;               // Salud del motor
+    private float saludChasis;              // Salud del chasis
+    private float saludTanqueCombustible;   // Salud del sistema de combustible
+
+    private int horaJuego;                  // Hora del juego
+    private int minutoJuego;                // Minuto del juego
+    private int segundoJuego;               // Segundo del juego
+    private int milisegundoJuego;           // Milisegundo del juego
+    private Weather clima;                  // Clima actual
+
+    // Variables de configuración
+    private string unidadVelocidad;         // Unidad de velocidad
+    private bool guardarTelemetria;         // Guardar telemetría en archivo
+
+    // Colores de telemetría
+    private string colorFreno;              // Color para la barra de freno
+    private string colorAcelerador;         // Color para la barra de acelerador
+    private string colorRPM;                // Color para la barra de RPM
+    private string colorMarcha;             // Color para las marchas
+    private string colorVelocidad;          // Color para la velocidad
     private string colorTiempoTranscurrido; // Color para el tiempo transcurrido
 
     // Diccionarios para almacenar las mejores vueltas y mejores tiempos por sector por vehículo
@@ -199,8 +236,9 @@ public class CronometroConSectores : Script
         unidadVelocidad = ObtenerValorIni(lines, "Ajustes", "UnidadVelocidad", "kmh").ToLower();
 
         // Leer colores de telemetría
-        colorFreno = ObtenerValorIni(lines, "ColoresTelemetria", "ColorFreno", "~b~");
-        colorRPM = ObtenerValorIni(lines, "ColoresTelemetria", "ColorRPM", "~r~");
+        colorAcelerador = ObtenerValorIni(lines, "ColoresTelemetria", "ColorAcelerador", "~g~");
+        colorFreno = ObtenerValorIni(lines, "ColoresTelemetria", "ColorFreno", "~r~");
+        colorRPM = ObtenerValorIni(lines, "ColoresTelemetria", "ColorRPM", "~c~");
         colorMarcha = ObtenerValorIni(lines, "ColoresTelemetria", "ColorMarcha", "~s~");
         colorVelocidad = ObtenerValorIni(lines, "ColoresTelemetria", "ColorVelocidad", "~y~");
         colorTiempoTranscurrido = ObtenerValorIni(lines, "ColoresTelemetria", "ColorTiempoTranscurrido", "~s~");
@@ -434,16 +472,19 @@ public class CronometroConSectores : Script
             if (mostrarTelemetria)
             {
                 // Crear barras de progreso usando caracteres
+                string barraAcelerador = CrearBarra(acelerador, 30);
                 string barraFreno = CrearBarra(freno, 30);
-                string barraRPM = CrearBarra(rpm / 10000.0f, 50);
+                string barraRPM = CrearBarra(rpm, 50);
 
                 // Construir el mensaje de telemetría
                 mensaje += string.Format(
-                    "{4} {5} {6:F0} RPM{7}\n" +
+                    "{8} {9} {10:F0} RPM{11}\n" +
+                    "{4}Acel: {5} {6:F0}%{7}\n" +
                     "{0}Freno: {1} {2:F0}%{3}\n" +
-                    "{12}{9}    {10} {8:F0} {11}",
+                    "{16}{13}    {14} {12:F0} {15}",
                     colorFreno, barraFreno, freno * 100, "~s~",
-                    colorRPM, barraRPM, rpm, "~s~",
+                    colorAcelerador, barraAcelerador, acelerador * 100, "~s~",
+                    colorRPM, barraRPM, rpm * 10000, "~s~",
                     velocidad, marcha,
                     colorVelocidad, unidadVelocidad == "mph" ? "mph" : "km/h", colorMarcha
                 );
@@ -884,14 +925,28 @@ public class CronometroConSectores : Script
         try
         {
             telemetriaAcumulada.Add(string.Format("Telemetría | Fecha: {0} | Circuito: {1} | Vuelta: {2}", DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss.fff"), circuitoSeleccionado, numeroVuelta));
+            telemetriaAcumulada.Add(string.Format("  Hora del juego: {0:D2}:{1:D2}:{2:D2}.{3:D3}", horaJuego, minutoJuego, segundoJuego, milisegundoJuego));
+            telemetriaAcumulada.Add(string.Format("  Clima: {0}", clima));
             telemetriaAcumulada.Add(string.Format("  Velocidad: {0:F1} {1}", velocidad, unidadVelocidad == "mph" ? "mph" : "km/h"));
-            telemetriaAcumulada.Add(string.Format("  RPM: {0:F0}", rpm));
-            telemetriaAcumulada.Add(string.Format("  Marcha: {0}", marcha));
+            telemetriaAcumulada.Add(string.Format("  Velocidad de las ruedas: {0:F1} {1}", velocidadRuedas, unidadVelocidad == "mph" ? "mph" : "km/h"));
+            telemetriaAcumulada.Add(string.Format("  Velocidad vectores: X={0:F1} Y={1:F1} Z={2:F1} m/s", velocidad2.X, velocidad2.Y, velocidad2.Z));
+            telemetriaAcumulada.Add(string.Format("  Pedal Acelerador: {0:F0}%", pedalAcelerador * 100));
+            telemetriaAcumulada.Add(string.Format("  Acelerador: {0:F0}%", acelerador * 100));
+            telemetriaAcumulada.Add(string.Format("  RPM: {0:F0}", rpm * 10000));
             telemetriaAcumulada.Add(string.Format("  Freno: {0:F0}%", freno * 100));
-            telemetriaAcumulada.Add(string.Format("  Nivel de combustible: {0:F1}%", fuelLevel));
+            telemetriaAcumulada.Add(string.Format("  Embrague: {0}", embrague)); // 1 es no pulsado y cuando más cerca del 0 es totalmente pulsado
+            telemetriaAcumulada.Add(string.Format("  Marcha: {0}", marcha));
+            telemetriaAcumulada.Add(string.Format("  Ángulo de giro: {0:F1}º", anguloGiro));
+            telemetriaAcumulada.Add(string.Format("  Turbo: {0:F0}%", turbo * 100));
+            telemetriaAcumulada.Add(string.Format("  Nivel de combustible: {0:F1}L", nivelCombustible));
+            telemetriaAcumulada.Add(string.Format("  Nivel de aceite: {0:F1}L", nivelAceite));
+            telemetriaAcumulada.Add(string.Format("  Temperatura del motor: {0:F1}ºC", temperaturaMotor));
             telemetriaAcumulada.Add(string.Format("  Posición: ({0:F2}, {1:F2}, {2:F2})", Game.Player.Character.Position.X, Game.Player.Character.Position.Y, Game.Player.Character.Position.Z));
             telemetriaAcumulada.Add(string.Format("  Dirección: ({0:F2}, {1:F2}, {2:F2})", forwardVector.X, forwardVector.Y, forwardVector.Z));
-            telemetriaAcumulada.Add(string.Format("  4 ruedas en el suelo: {0}", isOnAllWheels));
+            telemetriaAcumulada.Add(string.Format("  4 ruedas en el suelo: {0}", todasRuedasTocandoSuelo));
+            telemetriaAcumulada.Add(string.Format("  Nivel de suciedad: {0:F0}%", nivelSuciedad / 15 * 100));
+            telemetriaAcumulada.Add(string.Format("  Luces: {0}", lucesEncendidas));
+            telemetriaAcumulada.Add(string.Format("  Luces Largas: {0}", lucesLargasEncendidas));
         }
         catch (Exception ex)
         {
@@ -941,42 +996,112 @@ public class CronometroConSectores : Script
     {
         if (Game.Player.Character.IsInVehicle())
         {
-            var vehiculo = Game.Player.Character.CurrentVehicle;
-            freno = vehiculo.BrakePower;      // Presión en el freno
-            rpm = vehiculo.CurrentRPM * 10000; // Convertir a RPM (ajustar según sea necesario)
-            marcha = vehiculo.CurrentGear;    // Marcha actual
-            velocidad = vehiculo.Speed; // Velocidad en m/s
+            Vehicle vehiculo = Game.Player.Character.CurrentVehicle;
+
+            horaJuego = GameClock.Hour;                                 // Hora del juego
+            minutoJuego = GameClock.Minute;                             // Minuto del juego
+            segundoJuego = GameClock.Second;                            // Segundo del juego
+            milisegundoJuego = GameClock.MillisecondsPerGameMinute;     // Milisegundo del juego
+            clima = World.Weather;                                      // Clima
+
+            pedalAcelerador = vehiculo.Throttle;                        // Pedal de acelerador pisado float
+            acelerador = vehiculo.ThrottlePower;                        // Porcentage de acelerador float
+            freno = vehiculo.BrakePower;                                // Presión en el freno
+            rpm = vehiculo.CurrentRPM;                                  // Convertir a RPM (ajustar según sea necesario)
+            embrague = vehiculo.Clutch;                                 // Posicion del embrague float
+            marcha = vehiculo.CurrentGear;                              // Marcha actual
+            turbo = vehiculo.Turbo;                                     // Estado del turbo float
+            //frenoMano = vehiculo.IsHandbrakeForcedOn;                 // Freno de mano activado bool  // No en uso
+            forwardVector = vehiculo.ForwardVector;                     // Dirección del vehículo
+
+            velocidad = vehiculo.Speed;                                 // Velocidad en m/s
+            velocidad2 = vehiculo.Velocity;                             // Un Vector3 que representa la dirección y fuerza del movimiento.
+
+            nivelCombustible = vehiculo.FuelLevel;                      // Combustible actual
+            nivelAceite = vehiculo.OilLevel;                            // Nivel de aceite float
+            temperaturaMotor = vehiculo.EngineTemperature;              // Temperatura del motor float 
+
+            todasRuedasTocandoSuelo = vehiculo.IsOnAllWheels;           // Todas las ruedas en el suelo
+            cocheDetenido = vehiculo.IsStopped;                         // Indica si el coche está completamente parado // No en uso
+            nivelSuciedad = vehiculo.DirtLevel;                         // Nivel de suciedad del vehículo float de 0.0f a 15.0f
+            coheteActivado = vehiculo.IsRocketBoostActive;              // Si el cohete está encendido bool             // No en uso
+
+            saludMotor = vehiculo.EngineHealth;                         // Salud del motor float                    // No en uso
+            saludChasis = vehiculo.BodyHealth;                          // Salud del chasis float                   // No en uso
+            saludTanqueCombustible = vehiculo.PetrolTankHealth;         // Salud del tanque de combustible float    // No en uso
+
+            motorArrancando = vehiculo.IsEngineRunning;                 // Si el motor está arrancando bool     // No en uso
+            motorEncendido = vehiculo.IsEngineStarting;                 // Si el motor está encendido bool      // No en uso
+
+            velocidadRuedas = vehiculo.WheelSpeed;                      // Velocidad de giro de las ruedas float
+            anguloGiro = vehiculo.SteeringAngle;                        // Ángulo de giro de la dirección float
+
+            lucesEncendidas = vehiculo.AreLightsOn;                     // Indica si las luces están encendidas bool
+            lucesLargasEncendidas = vehiculo.AreHighBeamsOn;            // Indica si las luces largas están encendidas bool
+            intermitenteIzquierdo = vehiculo.IsLeftIndicatorLightOn;    // Indica si el intermitente izquierdo está encendido bool
+            intermitenteDerecho = vehiculo.IsRightIndicatorLightOn;     // Indica si el intermitente derecho está encendido bool
+            //lucesFrenoEncendidas = vehiculo.AreBrakeLightsOn;         // Indica si las luces de freno están encendidas bool   // No en uso
 
             // Convertir la velocidad a la unidad seleccionada
             if (unidadVelocidad == "mph")
             {
-                velocidad *= 2.23694f; // Convertir de m/s a mph
+                velocidad *= 2.23694f;          // Convertir de m/s a mph
+                velocidadRuedas *= 2.23694f;    // Convertir de m/s a mph
             }
             else
             {
-                velocidad *= 3.6f; // Convertir de m/s a km/h
+                velocidad *= 3.6f;          // Convertir de m/s a km/h
+                velocidadRuedas *= 3.6f;    // Convertir de m/s a km/h
             }
-
-            forwardVector = vehiculo.ForwardVector; // Dirección del vehículo
-            isOnAllWheels = vehiculo.IsOnAllWheels; // Todas las ruedas en el suelo
-            fuelLevel = vehiculo.FuelLevel; // Combustible actual
         }
         else
         {
             // Resetear valores si el jugador no está en un vehículo
+            pedalAcelerador = 0;
+            acelerador = 0;
             freno = 0;
             rpm = 0;
+            embrague = 0;
             marcha = 0;
+            frenoMano = false;
+            anguloGiro = 0;
+            turbo = 0;
             velocidad = 0;
+            velocidadRuedas = 0;
+            velocidad2 = Vector3.Zero;
             forwardVector = Vector3.Zero;
-            isOnAllWheels = false;
-            fuelLevel = 0;
+            todasRuedasTocandoSuelo = false;
+            nivelCombustible = 0;
+            nivelAceite = 0;
+            temperaturaMotor = 0;
+            cocheDetenido = false;
+            coheteActivado = false;
+            motorArrancando = false;
+            motorEncendido = false;
+            lucesEncendidas = false;
+            lucesLargasEncendidas = false;
+            intermitenteIzquierdo = false;
+            intermitenteDerecho = false;
+            nivelSuciedad = 0;
+            saludMotor = 0;
+            saludChasis = 0;
+            saludTanqueCombustible = 0;
+
+            // Mantener hora y clima actuales incluso cuando no se está en vehículo
+            horaJuego = GameClock.Hour;                                 // Hora del juego
+            minutoJuego = GameClock.Minute;                             // Minuto del juego
+            segundoJuego = GameClock.Second;                            // Segundo del juego
+            milisegundoJuego = GameClock.MillisecondsPerGameMinute;     // Milisegundo del juego
+            clima = World.Weather;
         }
     }
 
     // Función para crear una barra de progreso usando caracteres
     private string CrearBarra(float valor, int longitud)
     {
+        // Asegurar que el valor esté entre 0 y 1
+        valor = Math.Max(0, Math.Min(1, valor));
+
         int cantidad = (int)(valor * longitud);
         return new string('|', cantidad).PadRight(longitud, ' ');
     }

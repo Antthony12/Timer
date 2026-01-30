@@ -32,6 +32,7 @@ circuito_por_sesion = {}  # Almacenar circuito por sesión
 # Expresiones regulares para extraer datos
 patron_tiempo = re.compile(r"Fecha: (\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}\.\d{3})")
 patron_velocidad = re.compile(r"Velocidad: ([\d,]+) km/h")
+patron_velocidad_ruedas = re.compile(r"Velocidad de las ruedas: ([\d,]+) km/h")
 patron_freno = re.compile(r"Freno: ([\d,]+)%")
 patron_rpm = re.compile(r"RPM: ([\d,]+)")
 patron_marcha = re.compile(r"Marcha: (\d+)")
@@ -39,6 +40,15 @@ patron_vuelta = re.compile(r"Vuelta: (\d+)")
 patron_circuito = re.compile(r"Circuito: (.+?) \| Vuelta:")
 patron_posicion = re.compile(r"Posición: \(([\d,-]+), ([\d,-]+), ([\d,-]+)\)")
 patron_inicio_sesion = re.compile(r"=== Telemetría iniciada (.+?) (.+?) (.+?) ===")
+patron_clima = re.compile(r"Clima: (.+)")
+patron_hora_juego = re.compile(r"Hora del juego: (\d{2}):(\d{2}):(\d{2})\.(\d{3})")
+patron_embrague = re.compile(r"Embrague: (\d+)")
+patron_angulo_giro = re.compile(r"Ángulo de giro: ([\d,-]+)º")
+patron_turbo = re.compile(r"Turbo: ([\d,-]+)%")
+patron_pedal_acelerador = re.compile(r"Pedal Acelerador: ([\d,]+)%")
+patron_temperatura_motor = re.compile(r"Temperatura del motor: ([\d,]+)ºC")
+patron_acelerador = re.compile(r"Acelerador: ([\d,]+)%")
+patron_suciedad = re.compile(r"Nivel de suciedad: ([\d,]+)%")
 
 # Función para limpiar la última línea si es un registro de inicio
 def limpiar_ultima_linea_si_registro(ruta_archivo, inicio_registro):
@@ -87,6 +97,16 @@ with open(ruta_archivo, "r", encoding="utf-8") as archivo:
         coincidencia_marcha = patron_marcha.search(linea)
         coincidencia_vuelta = patron_vuelta.search(linea)
         coincidencia_posicion = patron_posicion.search(linea)
+        coincidencia_clima = patron_clima.search(linea)
+        coincidencia_hora_juego = patron_hora_juego.search(linea)
+        coincidencia_velocidad_ruedas = patron_velocidad_ruedas.search(linea)
+        coincidencia_acelerador = patron_acelerador.search(linea)
+        coincidencia_embrague = patron_embrague.search(linea)
+        coincidencia_angulo_giro = patron_angulo_giro.search(linea)
+        coincidencia_turbo = patron_turbo.search(linea)
+        coincidencia_pedal_acelerador = patron_pedal_acelerador.search(linea)
+        coincidencia_temperatura_motor = patron_temperatura_motor.search(linea)
+        coincidencia_suciedad = patron_suciedad.search(linea)
 
         if coincidencia_tiempo:
             marca_tiempo_actual = coincidencia_tiempo.group(1)
@@ -97,11 +117,20 @@ with open(ruta_archivo, "r", encoding="utf-8") as archivo:
                 sesiones[sesion_actual][numero_vuelta] = {
                     "marcas_tiempo": [],
                     "velocidades": [],
+                    "velocidades_ruedas": [],
                     "frenos": [],
                     "rpms": [],
                     "marchas": [],
                     "duraciones": [],
-                    "posiciones": []
+                    "posiciones": [],
+                    "climas": [],
+                    "horas_juego": [],
+                    "embragues": [],
+                    "angulos_giro": [],
+                    "turbos": [],
+                    "pedales_acelerador": [],
+                    "temperaturas_motor": [],
+                    "aceleradores": []
                 }
             vuelta_actual = numero_vuelta
 
@@ -133,11 +162,69 @@ with open(ruta_archivo, "r", encoding="utf-8") as archivo:
                     sesiones[sesion_actual][vuelta_actual]["posiciones"] = []
                 sesiones[sesion_actual][vuelta_actual]["posiciones"].append((x, y, z))
 
-# Función para formatear segundos a mm:ss
-def segundos_a_minutos(segundos, pos):
-    minutos = int(segundos // 60)
-    segundos = int(segundos % 60)
-    return f"{minutos:02d}:{segundos:02d}"
+        if coincidencia_clima and vuelta_actual in sesiones[sesion_actual]:
+            clima = coincidencia_clima.group(1).strip()
+            sesiones[sesion_actual][vuelta_actual]["climas"].append(clima)
+
+        if coincidencia_hora_juego and vuelta_actual in sesiones[sesion_actual]:
+            hora = int(coincidencia_hora_juego.group(1))
+            minuto = int(coincidencia_hora_juego.group(2))
+            segundo = int(coincidencia_hora_juego.group(3))
+            milisegundo = int(coincidencia_hora_juego.group(4))
+            hora_juego_str = f"{hora:02d}:{minuto:02d}:{segundo:02d}.{milisegundo:04d}"
+            sesiones[sesion_actual][vuelta_actual]["horas_juego"].append(hora_juego_str)
+
+        if coincidencia_velocidad_ruedas and vuelta_actual in sesiones[sesion_actual]:
+            velocidad_ruedas = float(coincidencia_velocidad_ruedas.group(1).replace(",", "."))
+            sesiones[sesion_actual][vuelta_actual]["velocidades_ruedas"].append(velocidad_ruedas)
+
+        if coincidencia_acelerador and vuelta_actual in sesiones[sesion_actual]:
+            acelerador = float(coincidencia_acelerador.group(1).replace(",", "."))
+            sesiones[sesion_actual][vuelta_actual]["aceleradores"].append(acelerador)
+
+        if coincidencia_embrague and vuelta_actual in sesiones[sesion_actual]:
+            embrague = int(coincidencia_embrague.group(1))
+            sesiones[sesion_actual][vuelta_actual]["embragues"].append(embrague)
+
+        if coincidencia_angulo_giro and vuelta_actual in sesiones[sesion_actual]:
+            angulo_giro = float(coincidencia_angulo_giro.group(1).replace(",", "."))
+            sesiones[sesion_actual][vuelta_actual]["angulos_giro"].append(angulo_giro)
+
+        if coincidencia_turbo and vuelta_actual in sesiones[sesion_actual]:
+            turbo = float(coincidencia_turbo.group(1).replace(",", "."))
+            sesiones[sesion_actual][vuelta_actual]["turbos"].append(turbo)
+
+        if coincidencia_pedal_acelerador and vuelta_actual in sesiones[sesion_actual]:
+            pedal_acelerador = float(coincidencia_pedal_acelerador.group(1).replace(",", "."))
+            sesiones[sesion_actual][vuelta_actual]["pedales_acelerador"].append(pedal_acelerador)
+
+        if coincidencia_temperatura_motor and vuelta_actual in sesiones[sesion_actual]:
+            temperatura_motor = float(coincidencia_temperatura_motor.group(1).replace(",", "."))
+            sesiones[sesion_actual][vuelta_actual]["temperaturas_motor"].append(temperatura_motor)
+
+        if coincidencia_suciedad and vuelta_actual in sesiones[sesion_actual]:
+            suciedad = float(coincidencia_suciedad.group(1).replace(",", "."))
+            if "suciedades" not in sesiones[sesion_actual][vuelta_actual]:
+                sesiones[sesion_actual][vuelta_actual]["suciedades"] = []
+            sesiones[sesion_actual][vuelta_actual]["suciedades"].append(suciedad)
+
+# Función para formatear segundos a mm:ss.ms
+def segundos_a_minutos(segundos, pos=None):
+    # Formatea segundos a mm:ss.ms
+    if pos is not None:
+        # Llamado por FuncFormatter
+        minutos = int(segundos // 60)
+        segundos_restantes = segundos % 60
+        segundos_enteros = int(segundos_restantes)
+        milisegundos = int((segundos_restantes - segundos_enteros) * 1000)
+        return f"{minutos:02d}:{segundos_enteros:02d}.{milisegundos:03d}"
+    else:
+        # Llamado manualmente
+        minutos = int(segundos // 60)
+        segundos_restantes = segundos % 60
+        segundos_enteros = int(segundos_restantes)
+        milisegundos = int((segundos_restantes - segundos_enteros) * 1000)
+        return f"{minutos:02d}:{segundos_enteros:02d}.{milisegundos:03d}"
 
 # Calcular la duración de cada punto de datos en relación al inicio de la vuelta
 for sesion, datos_vuelta in sesiones.items():
@@ -146,32 +233,53 @@ for sesion, datos_vuelta in sesiones.items():
             t0 = datos["marcas_tiempo"][0]
             datos["duraciones"] = [(t - t0).total_seconds() for t in datos["marcas_tiempo"]]
 
-# Crear la figura usando GridSpec con 11 filas:
-# Fila 0: Gráfica de tiempos por vuelta (línea)
-# Fila 1: Espacio en blanco para la gráfica de tiempos
-# Fila 2: Gráfica de deltas (barras, sin título)
-# Fila 3: Velocidad media
-# Fila 4: Velocidad
-# Fila 5: Freno
-# Fila 6: RPM
-# Fila 7: Marcha
-# Fila 8: Fuerza G (nueva)
-# Fila 9: Mapa 2D
-# Fila 10: (Espacio en blanco final, opcional)
-fig = plt.figure(figsize=(12, 32))
-gs = gridspec.GridSpec(12, 1, height_ratios=[1, 0.2, 1, 1, 1, 1, 1, 1, 1, 0.4, 4, 1])
+# Crear las figuras usando GridSpec con 17 filas:
+fig = plt.figure(figsize=(18, 40))
+
+# GridSpec con 17 filas (una para cada gráfica + espacios)
+# Orden:
+# 0: Tiempos por vuelta
+# 1: Espacio
+# 2: Delta
+# 3: Velocidad media
+# 4: Velocidad
+# 5: Velocidad de las ruedas
+# 6: Acelerador
+# 7: Freno
+# 8: RPM
+# 9: Pedal Acelerador
+# 10: Embrague
+# 11: Marcha
+# 12: Turbo
+# 13: Ángulo de giro
+# 14: Fuerza G
+# 15: Temperatura del motor
+# 16: Espacio
+# 17: Suciedad
+# 18: Espacio
+# 19: Mapa 2D
+# 20: Espacio final
+gs = gridspec.GridSpec(21, 1, height_ratios=[1, 0.2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0.3, 1, 0.4, 4, 1])
 plt.subplots_adjust(left=0.07, right=0.98, top=0.97, bottom=0, hspace=0.02)
 
 # Definir cada eje (omitimos las filas en blanco)
-ax0 = fig.add_subplot(gs[0])  # Tiempos por vuelta (línea)
-ax1 = fig.add_subplot(gs[2])  # Delta (barras, sin título)
-ax8 = fig.add_subplot(gs[3])  # Velocidad media
-ax2 = fig.add_subplot(gs[4])  # Velocidad
-ax3 = fig.add_subplot(gs[5])  # Freno
-ax4 = fig.add_subplot(gs[6])  # RPM
-ax5 = fig.add_subplot(gs[7])  # Marcha
-ax7 = fig.add_subplot(gs[8])  # Fuerza G (nueva)
-ax6 = fig.add_subplot(gs[10])  # Mapa 2D
+ax0  = fig.add_subplot(gs[0])   # Tiempos por vuelta
+ax1  = fig.add_subplot(gs[2])   # Delta
+ax8  = fig.add_subplot(gs[3])   # Velocidad media
+ax2  = fig.add_subplot(gs[4])   # Velocidad
+ax9  = fig.add_subplot(gs[5])   # Velocidad de las ruedas
+ax10 = fig.add_subplot(gs[6])   # Acelerador
+ax3  = fig.add_subplot(gs[7])   # Freno
+ax4  = fig.add_subplot(gs[8])   # RPM
+ax11 = fig.add_subplot(gs[9])   # Pedal Acelerador
+ax12 = fig.add_subplot(gs[10])  # Embrague
+ax5  = fig.add_subplot(gs[11])  # Marcha
+ax13 = fig.add_subplot(gs[12])  # Turbo
+ax14 = fig.add_subplot(gs[13])  # Ángulo de giro
+ax7  = fig.add_subplot(gs[14])  # Fuerza G
+ax15 = fig.add_subplot(gs[15])  # Temperatura del motor
+ax16 = fig.add_subplot(gs[17])  # Suciedad
+ax6  = fig.add_subplot(gs[19])  # Mapa 2D
 
 def actualizar_grafica():
     global sesion_seleccionada
@@ -186,7 +294,6 @@ def actualizar_grafica():
         print("No se han seleccionado sesión o vueltas.")
         return
     
-    # Obtener sesión y circuito actual (usar sesion_seleccionada)
     circuito_actual = circuito_por_sesion.get(sesion_seleccionada, "Circuito Desconocido")
     datos_vuelta_sesion = sesiones[sesion_seleccionada]
 
@@ -195,7 +302,7 @@ def actualizar_grafica():
     print(f"Datos de la sesión: {datos_vuelta_sesion.keys()}")
     
     # Limpiar TODOS los ejes
-    for ax in [ax0, ax1, ax2, ax3, ax4, ax5, ax7, ax6, ax8]:
+    for ax in [ax0, ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8, ax9, ax10, ax11, ax12, ax13, ax14, ax15, ax16]:
         ax.cla()
     
     colores = plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -226,52 +333,97 @@ def actualizar_grafica():
             continue
         color = colores[idx % len(colores)]
         
-        # Graficar en las gráficas de velocidad, freno, RPM y marcha
+        # Obtener las duraciones como referencia para todas las gráficas
+        duraciones = datos_vuelta_sesion[numero_vuelta]["duraciones"]
+        duracion_len = len(duraciones)
+        
+        # Graficar en TODAS las gráficas asegurando que los datos tengan la misma longitud
         try:
-            print(f"Longitud de duraciones para la vuelta {numero_vuelta}: {len(datos_vuelta_sesion[numero_vuelta]['duraciones'])}")
-            print(f"Longitud de velocidades para la vuelta {numero_vuelta}: {len(datos_vuelta_sesion[numero_vuelta]['velocidades'])}")
-            ax2.plot(datos_vuelta_sesion[numero_vuelta]["duraciones"], datos_vuelta_sesion[numero_vuelta]["velocidades"],
-                     color=color, alpha=0.7, label=f"Vuelta {numero_vuelta}")
-            ax3.plot(datos_vuelta_sesion[numero_vuelta]["duraciones"], datos_vuelta_sesion[numero_vuelta]["frenos"],
-                     color=color, alpha=0.7, label=f"Vuelta {numero_vuelta}")
-            ax4.plot(datos_vuelta_sesion[numero_vuelta]["duraciones"], datos_vuelta_sesion[numero_vuelta]["rpms"],
-                     color=color, alpha=0.7, label=f"Vuelta {numero_vuelta}")
-            ax5.plot(datos_vuelta_sesion[numero_vuelta]["duraciones"], datos_vuelta_sesion[numero_vuelta]["marchas"],
-                     color=color, alpha=0.7, label=f"Vuelta {numero_vuelta}")
+            print(f"Longitud de duraciones para la vuelta {numero_vuelta}: {duracion_len}")
+            
+            # Velocidad (ax2) - ya sabemos que existe
+            velocidades = datos_vuelta_sesion[numero_vuelta]["velocidades"][:duracion_len]
+            ax2.plot(duraciones, velocidades, color=color, alpha=0.7, label=f"Vuelta {numero_vuelta}")
+            
+            # Freno (ax3)
+            frenos = datos_vuelta_sesion[numero_vuelta]["frenos"][:duracion_len] if len(datos_vuelta_sesion[numero_vuelta]["frenos"]) >= duracion_len else [0] * duracion_len
+            ax3.plot(duraciones, frenos, color=color, alpha=0.7, label=f"Vuelta {numero_vuelta}")
+            
+            # RPM (ax4)
+            rpms = datos_vuelta_sesion[numero_vuelta]["rpms"][:duracion_len] if len(datos_vuelta_sesion[numero_vuelta]["rpms"]) >= duracion_len else [0] * duracion_len
+            ax4.plot(duraciones, rpms, color=color, alpha=0.7, label=f"Vuelta {numero_vuelta}")
+            
+            # Marcha (ax5)
+            marchas = datos_vuelta_sesion[numero_vuelta]["marchas"][:duracion_len] if len(datos_vuelta_sesion[numero_vuelta]["marchas"]) >= duracion_len else [0] * duracion_len
+            ax5.plot(duraciones, marchas, color=color, alpha=0.7, label=f"Vuelta {numero_vuelta}")
+            
+            # Velocidad de las ruedas (ax9)
+            velocidades_ruedas = datos_vuelta_sesion[numero_vuelta]["velocidades_ruedas"][:duracion_len] if len(datos_vuelta_sesion[numero_vuelta]["velocidades_ruedas"]) >= duracion_len else [0] * duracion_len
+            ax9.plot(duraciones, velocidades_ruedas, color=color, alpha=0.7, label=f"Vuelta {numero_vuelta}")
+            
+            # Acelerador (ax10)
+            aceleradores = datos_vuelta_sesion[numero_vuelta]["aceleradores"][:duracion_len] if len(datos_vuelta_sesion[numero_vuelta]["aceleradores"]) >= duracion_len else [0] * duracion_len
+            ax10.plot(duraciones, aceleradores, color=color, alpha=0.7, label=f"Vuelta {numero_vuelta}")
+            
+            # Pedal Acelerador (ax11)
+            pedales_acelerador = datos_vuelta_sesion[numero_vuelta]["pedales_acelerador"][:duracion_len] if len(datos_vuelta_sesion[numero_vuelta]["pedales_acelerador"]) >= duracion_len else [0] * duracion_len
+            ax11.plot(duraciones, pedales_acelerador, color=color, alpha=0.7, label=f"Vuelta {numero_vuelta}")
+            
+            # Embrague (ax12)
+            embragues = datos_vuelta_sesion[numero_vuelta]["embragues"][:duracion_len] if len(datos_vuelta_sesion[numero_vuelta]["embragues"]) >= duracion_len else [0] * duracion_len
+            ax12.plot(duraciones, embragues, color=color, alpha=0.7, label=f"Vuelta {numero_vuelta}")
+            
+            # Turbo (ax13)
+            turbos = datos_vuelta_sesion[numero_vuelta]["turbos"][:duracion_len] if len(datos_vuelta_sesion[numero_vuelta]["turbos"]) >= duracion_len else [0] * duracion_len
+            ax13.plot(duraciones, turbos, color=color, alpha=0.7, label=f"Vuelta {numero_vuelta}")
+            
+            # Ángulo de giro (ax14)
+            angulos_giro = datos_vuelta_sesion[numero_vuelta]["angulos_giro"][:duracion_len] if len(datos_vuelta_sesion[numero_vuelta]["angulos_giro"]) >= duracion_len else [0] * duracion_len
+            ax14.plot(duraciones, angulos_giro, color=color, alpha=0.7, label=f"Vuelta {numero_vuelta}")
+            
+            # Temperatura del motor (ax15)
+            temperaturas_motor = datos_vuelta_sesion[numero_vuelta]["temperaturas_motor"][:duracion_len] if len(datos_vuelta_sesion[numero_vuelta]["temperaturas_motor"]) >= duracion_len else [0] * duracion_len
+            ax15.plot(duraciones, temperaturas_motor, color=color, alpha=0.7, label=f"Vuelta {numero_vuelta}")
+            
         except Exception as e:
             print(f"Error al graficar la vuelta {numero_vuelta}: {e}")
+            import traceback
+            traceback.print_exc()
         
-        if datos_vuelta_sesion[numero_vuelta]["marchas"]:
-            ax5.set_yticks(range(int(min(datos_vuelta_sesion[numero_vuelta]["marchas"])),
-                                 int(max(datos_vuelta_sesion[numero_vuelta]["marchas"])) + 1))
+        # Configurar ticks de marchas
+        if marchas and any(m != 0 for m in marchas):
+            marchas_filtradas = [m for m in marchas if m != 0]
+            if marchas_filtradas:
+                ax5.set_yticks(range(int(min(marchas_filtradas)), int(max(marchas_filtradas)) + 1))
         
         # Recoger datos para la gráfica de tiempos por vuelta y de deltas
-        if datos_vuelta_sesion[numero_vuelta]["duraciones"]:
-            tiempo_total = datos_vuelta_sesion[numero_vuelta]["duraciones"][-1]
+        if duraciones:
+            tiempo_total = duraciones[-1]
             numeros_vuelta_linea.append(numero_vuelta)
             tiempos_totales.append(tiempo_total)
             numeros_vuelta_delta.append(numero_vuelta)
             tiempos_vuelta.append(tiempo_total)
 
         # Calcular velocidad media para esta vuelta
-        if numero_vuelta in datos_vuelta_sesion and datos_vuelta_sesion[numero_vuelta]["velocidades"]:
-            velocidad_media = np.mean(datos_vuelta_sesion[numero_vuelta]["velocidades"])
+        if numero_vuelta in datos_vuelta_sesion and velocidades:
+            velocidad_media = np.mean(velocidades)
             numeros_vuelta_velocidad.append(numero_vuelta)
             velocidades_medias.append(velocidad_media)
 
     # Gráfica de tiempos por vuelta (ax0)
     if numeros_vuelta_linea:
-        ax0.plot(numeros_vuelta_linea, tiempos_totales, marker='o', linestyle='-',
+        ax0.plot(numeros_vuelta_linea, tiempos_totales, marker='o', linestyle='none',
                 color='tab:orange', label="Tiempo por vuelta")
         
         ax0.yaxis.set_major_formatter(FuncFormatter(segundos_a_minutos))
-        
+        ax0.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+    
     ax0.set_xlabel("Vuelta")
-    ax0.set_ylabel("Tiempo (M:SS)")
+    ax0.set_ylabel("Tiempo (mm:ss.ms)")
     ax0.grid()
     ax0.legend()
 
-    # Gráfica de deltas (ax1): diferencia entre cada vuelta y la mejor vuelta (sin título)
+    # Gráfica de deltas (ax1)
     if tiempos_vuelta:
         mejor_tiempo = min(tiempos_vuelta)
         deltas = [t - mejor_tiempo for t in tiempos_vuelta]
@@ -280,14 +432,14 @@ def actualizar_grafica():
     ax1.grid(axis="y")
     ax1.set_xticks([])
 
-    # Configuración de las gráficas de velocidad, freno, RPM y marcha
-    for ax in [ax2, ax3, ax4, ax5, ax7]:
+    # Configurar límites y formato para todas las gráficas temporales
+    for ax in [ax2, ax3, ax4, ax5, ax7, ax9, ax10, ax11, ax12, ax13, ax14, ax15]:
         ax.set_xlim(inicio, fin)
         ax.xaxis.set_major_formatter(FuncFormatter(segundos_a_minutos))
-    ax2.set_xticks([])
-    ax3.set_xticks([])
-    ax4.set_xticks([])
-    ax5.set_xticks([])
+    
+    # Ocultar etiquetas X en las gráficas superiores
+    for ax in [ax2, ax3, ax4, ax5, ax9, ax10, ax11, ax12, ax13, ax14]:
+        ax.set_xticks([])
 
     ax2.set_ylabel("Velocidad (km/h)")
     ax2.grid()
@@ -313,27 +465,167 @@ def actualizar_grafica():
     ax8.grid(axis="y")
     ax8.set_xticks([])
 
-    # Nueva gráfica: Fuerza G (ax7)
-    # Se calcula la aceleración (m/s²) a partir de la velocidad (km/h convertida a m/s)
-    # y se divide por 9.81 para obtener la fuerza G.
+    # Fuerza G (ax7)
     for idx, numero_vuelta in enumerate(vueltas_seleccionadas):
         if numero_vuelta not in datos_vuelta_sesion:
             continue
         color = colores[idx % len(colores)]
         lista_velocidades = datos_vuelta_sesion[numero_vuelta]["velocidades"]
         lista_duraciones = datos_vuelta_sesion[numero_vuelta]["duraciones"]
-        if len(lista_velocidades) >= 2 and len(lista_duraciones) >= 2:
-            velocidades_mps = np.array(lista_velocidades) * 1000/3600  # Convertir a m/s
+        
+        # Asegurar que tengan la misma longitud
+        min_len = min(len(lista_velocidades), len(lista_duraciones))
+        lista_velocidades = lista_velocidades[:min_len]
+        lista_duraciones = lista_duraciones[:min_len]
+        
+        if min_len >= 2:
+            velocidades_mps = np.array(lista_velocidades) * 1000/3600
             duraciones = np.array(lista_duraciones)
-            # Calcular aceleración usando diferencias finitas
             aceleracion = np.diff(velocidades_mps) / np.diff(duraciones)
-            # Tiempo en los puntos medios
             tiempos_medios = (duraciones[:-1] + duraciones[1:]) / 2
             fuerza_g = aceleracion / 9.81
             ax7.plot(tiempos_medios, fuerza_g, color=color, alpha=0.7, label=f"Vuelta {numero_vuelta}")
-    ax7.set_xlabel("Tiempo (s)")
+    
     ax7.set_ylabel("Fuerza G")
     ax7.grid()
+    ax7.set_xticks([])
+
+    # Velocidad de las ruedas (ax9)
+    ax9.set_ylabel("Vel. Ruedas (km/h)")
+    ax9.grid()
+    
+    # Acelerador (ax10)
+    ax10.set_ylabel("Acelerador (%)")
+    ax10.grid()
+    
+    # Pedal Acelerador (ax11)
+    ax11.set_ylabel("Pedal Acel. (%)")
+    ax11.grid()
+    
+    # Embrague (ax12)
+    ax12.set_ylabel("Embrague")
+    ax12.grid()
+    
+    # Turbo (ax13)
+    ax13.set_ylabel("Turbo (%)")
+    ax13.grid()
+    
+    # Ángulo de giro (ax14)
+    ax14.set_ylabel("Ángulo (º)")
+    ax14.grid()
+    
+    # Temperatura del motor (ax15)
+    ax15.set_xlim(inicio, fin)
+    ax15.xaxis.set_major_formatter(FuncFormatter(segundos_a_minutos))
+    ax15.set_ylabel("Temp. Motor (ºC)")
+    ax15.set_xlabel("Tiempo (mm:ss.ms)")
+    ax15.grid()
+
+    # Suciedad (ax16)
+    tiempo_acumulado = 0
+    todas_x = []
+    todas_y = []
+    colores_segmentos = []
+    limites_vueltas = []  # Para almacenar los límites de cada vuelta
+    
+    for idx, numero_vuelta in enumerate(vueltas_seleccionadas):
+        if numero_vuelta not in datos_vuelta_sesion:
+            continue
+        
+        color = colores[idx % len(colores)]
+        
+        # Obtener datos de suciedad y duraciones para esta vuelta
+        if "suciedades" in datos_vuelta_sesion[numero_vuelta] and datos_vuelta_sesion[numero_vuelta]["suciedades"]:
+            suciedades = datos_vuelta_sesion[numero_vuelta]["suciedades"]
+            duraciones_vuelta = datos_vuelta_sesion[numero_vuelta]["duraciones"]
+            
+            # Asegurar que tengan la misma longitud
+            min_len = min(len(suciedades), len(duraciones_vuelta))
+            if min_len == 0:
+                continue
+                
+            suciedades = suciedades[:min_len]
+            duraciones_vuelta = duraciones_vuelta[:min_len]
+            
+            # Ajustar las duraciones para que sean continuas
+            duraciones_ajustadas = [t + tiempo_acumulado for t in duraciones_vuelta]
+            
+            # Almacenar los datos ajustados
+            todas_x.extend(duraciones_ajustadas)
+            todas_y.extend(suciedades)
+            
+            # Almacenar el color para este segmento
+            colores_segmentos.extend([color] * min_len)
+            
+            # Almacenar el límite de esta vuelta
+            limites_vueltas.append({
+                'numero': numero_vuelta,
+                'color': color,
+                'inicio': tiempo_acumulado,
+                'fin': tiempo_acumulado + duraciones_vuelta[-1] if duraciones_vuelta else tiempo_acumulado,
+                'suciedad_inicio': suciedades[0] if suciedades else 0,
+                'suciedad_fin': suciedades[-1] if suciedades else 0
+            })
+            
+            # Actualizar tiempo acumulado para la siguiente vuelta
+            tiempo_acumulado += duraciones_vuelta[-1] if duraciones_vuelta else 0
+    
+    # Graficar la línea continua de suciedad
+    if todas_x and todas_y:
+        # Crear la línea principal
+        ax16.plot(todas_x, todas_y, color='gray', linewidth=1, alpha=0.3)
+        
+        # Superponer segmentos coloreados por vuelta
+        # Para esto necesitamos dividir la línea en segmentos por vuelta
+        start_idx = 0
+        for limite in limites_vueltas:
+            # Encontrar los índices de los puntos que pertenecen a esta vuelta
+            puntos_vuelta = []
+            tiempos_vuelta = []
+            
+            for i in range(len(todas_x)):
+                if limite['inicio'] <= todas_x[i] <= limite['fin']:
+                    puntos_vuelta.append(todas_y[i])
+                    tiempos_vuelta.append(todas_x[i])
+            
+            if tiempos_vuelta and puntos_vuelta:
+                ax16.plot(tiempos_vuelta, puntos_vuelta, 
+                         color=limite['color'], 
+                         linewidth=2, 
+                         label=f"Vuelta {limite['numero']}")
+        
+        # Añadir marcadores en los límites entre vueltas
+        for i in range(1, len(limites_vueltas)):
+            limite_anterior = limites_vueltas[i-1]
+            limite_actual = limites_vueltas[i]
+            
+            # Dibujar una línea vertical punteada en el límite
+            ax16.axvline(x=limite_actual['inicio'], 
+                        color='black', 
+                        linestyle='--', 
+                        alpha=0.5, 
+                        linewidth=0.5)
+            
+            # Añadir etiqueta del número de vuelta
+            ax16.text(limite_actual['inicio'], 
+                     ax16.get_ylim()[1] * 0.95,  # Cerca del borde superior
+                     f"V{limite_actual['numero']}", 
+                     ha='center', 
+                     va='top',
+                     fontsize=8,
+                     bbox=dict(boxstyle="round,pad=0.3", 
+                              facecolor=limite_actual['color'], 
+                              alpha=0.7))
+    
+    # Configurar la gráfica de suciedad
+    if todas_x:
+        ax16.set_xlim(min(todas_x), max(todas_x))
+    else:
+        ax16.set_xlim(inicio, fin)
+    
+    ax16.set_ylabel("Suciedad (%)")
+    ax16.set_xlabel("Tiempo acumulado de sesión (s)")
+    ax16.grid(True, alpha=0.3)
 
     # Dibujar el mapa 2D (ax6)
     ax6.set_aspect('equal')
@@ -378,33 +670,239 @@ def actualizar_grafica():
     # Configurar tooltips (con mplcursors) para algunas gráficas
     cursor0 = mplcursors.cursor(ax0, hover=True)
     cursor0.connect("add", lambda sel: sel.annotation.set_text(
-        f"Vuelta: {sel.target[0]:.0f}\nTiempo: {sel.target[1]:.2f} s"))
+        f"Vuelta: {sel.target[0]:.0f}\nTiempo: {segundos_a_minutos(sel.target[1], None)}"))
+    
     cursor1 = mplcursors.cursor(ax1, hover=True)
     cursor1.connect("add", lambda sel: sel.annotation.set_text(
         f"Vuelta: {sel.target[0]:.0f}\nDelta: {sel.target[1]:.2f} s"))
+    
     cursor2 = mplcursors.cursor(ax2, hover=True)
-    cursor2.connect("add", lambda sel: sel.annotation.set_text(
-        f"{sel.artist.get_label()}\nTiempo: {sel.target[0]:.2f} s\nVelocidad: {sel.target[1]:.2f} km/h"))
+    cursor2.connect("add", lambda sel: 
+        sel.annotation.set_text(
+            obtener_tooltip_completo(
+                sesion_seleccionada, 
+                int(sel.artist.get_label().split()[-1]),
+                sel.target[0],  # Tiempo relativo
+                f"{sel.artist.get_label()}\nTiempo: {sel.target[0]:.2f} s\nVelocidad: {sel.target[1]:.2f} km/h"
+            )
+        ))
+    
     cursor3 = mplcursors.cursor(ax3, hover=True)
-    cursor3.connect("add", lambda sel: sel.annotation.set_text(
-        f"{sel.artist.get_label()}\nTiempo: {sel.target[0]:.2f} s\nFreno: {sel.target[1]:.2f} %"))
+    cursor3.connect("add", lambda sel: 
+        sel.annotation.set_text(
+            obtener_tooltip_completo(
+                sesion_seleccionada,
+                int(sel.artist.get_label().split()[-1]),
+                sel.target[0],
+                f"{sel.artist.get_label()}\nTiempo: {sel.target[0]:.2f} s\nFreno: {sel.target[1]:.2f} %"
+            )
+        ))
+    
     cursor4 = mplcursors.cursor(ax4, hover=True)
-    cursor4.connect("add", lambda sel: sel.annotation.set_text(
-        f"{sel.artist.get_label()}\nTiempo: {sel.target[0]:.2f} s\nRPM: {sel.target[1]:.0f}"))
+    cursor4.connect("add", lambda sel: 
+        sel.annotation.set_text(
+            obtener_tooltip_completo(
+                sesion_seleccionada,
+                int(sel.artist.get_label().split()[-1]),
+                sel.target[0],
+                f"{sel.artist.get_label()}\nTiempo: {sel.target[0]:.2f} s\nRPM: {sel.target[1]:.0f}"
+            )
+        ))
+    
     cursor5 = mplcursors.cursor(ax5, hover=True)
-    cursor5.connect("add", lambda sel: sel.annotation.set_text(
-        f"{sel.artist.get_label()}\nTiempo: {sel.target[0]:.2f} s\nMarcha: {sel.target[1]:.0f}"))
+    cursor5.connect("add", lambda sel: 
+        sel.annotation.set_text(
+            obtener_tooltip_completo(
+                sesion_seleccionada,
+                int(sel.artist.get_label().split()[-1]),
+                sel.target[0],
+                f"{sel.artist.get_label()}\nTiempo: {sel.target[0]:.2f} s\nMarcha: {sel.target[1]:.0f}"
+            )
+        ))
+    
     cursor7 = mplcursors.cursor(ax7, hover=True)
-    cursor7.connect("add", lambda sel: sel.annotation.set_text(
-        f"Fuerza G: {sel.target[1]:.2f}"))
+    cursor7.connect("add", lambda sel: 
+        sel.annotation.set_text(
+            f"Fuerza G: {sel.target[1]:.2f}\n" +
+            obtener_info_clima_hora(sesion_seleccionada, vueltas_seleccionadas[0], sel.target[0])
+        ))
+    
     cursor8 = mplcursors.cursor(ax8, hover=True)
     cursor8.connect("add", lambda sel: sel.annotation.set_text(
         f"Vuelta: {sel.target[0]:.0f}\nVelocidad Media: {sel.target[1]:.2f} km/h"))
+    
     cursor6 = mplcursors.cursor(ax6, hover=True)
-    cursor6.connect("add", lambda sel: sel.annotation.set_text(
-        sel.artist.get_label()))
+    cursor6.connect("add", lambda sel: 
+        sel.annotation.set_text(
+            obtener_tooltip_trazada(
+                sesion_seleccionada,
+                int(sel.artist.get_label().split()[-1]),
+                sel.target[0],  # Coordenada X
+                sel.target[1]   # Coordenada Y
+            )
+        ))
+    
+    cursor9 = mplcursors.cursor(ax9, hover=True)
+    cursor9.connect("add", lambda sel: 
+        sel.annotation.set_text(
+            obtener_tooltip_completo(
+                sesion_seleccionada,
+                int(sel.artist.get_label().split()[-1]),
+                sel.target[0],
+                f"{sel.artist.get_label()}\nTiempo: {sel.target[0]:.2f} s\nVel. Ruedas: {sel.target[1]:.2f} km/h"
+            )
+        ))
+
+    cursor10 = mplcursors.cursor(ax10, hover=True)
+    cursor10.connect("add", lambda sel: 
+        sel.annotation.set_text(
+            obtener_tooltip_completo(
+                sesion_seleccionada,
+                int(sel.artist.get_label().split()[-1]),
+                sel.target[0],
+                f"{sel.artist.get_label()}\nTiempo: {sel.target[0]:.2f} s\nAcelerador: {sel.target[1]:.2f} %"
+            )
+        ))
+
+    cursor11 = mplcursors.cursor(ax11, hover=True)
+    cursor11.connect("add", lambda sel: 
+        sel.annotation.set_text(
+            obtener_tooltip_completo(
+                sesion_seleccionada,
+                int(sel.artist.get_label().split()[-1]),
+                sel.target[0],
+                f"{sel.artist.get_label()}\nTiempo: {sel.target[0]:.2f} s\nPedal Acel.: {sel.target[1]:.2f} %"
+            )
+        ))
+
+    cursor12 = mplcursors.cursor(ax12, hover=True)
+    cursor12.connect("add", lambda sel: 
+        sel.annotation.set_text(
+            obtener_tooltip_completo(
+                sesion_seleccionada,
+                int(sel.artist.get_label().split()[-1]),
+                sel.target[0],
+                f"{sel.artist.get_label()}\nTiempo: {sel.target[0]:.2f} s\nEmbrague: {sel.target[1]:.0f}"
+            )
+        ))
+
+    cursor13 = mplcursors.cursor(ax13, hover=True)
+    cursor13.connect("add", lambda sel: 
+        sel.annotation.set_text(
+            obtener_tooltip_completo(
+                sesion_seleccionada,
+                int(sel.artist.get_label().split()[-1]),
+                sel.target[0],
+                f"{sel.artist.get_label()}\nTiempo: {sel.target[0]:.2f} s\nTurbo: {sel.target[1]:.2f} %"
+            )
+        ))
+
+    cursor14 = mplcursors.cursor(ax14, hover=True)
+    cursor14.connect("add", lambda sel: 
+        sel.annotation.set_text(
+            obtener_tooltip_completo(
+                sesion_seleccionada,
+                int(sel.artist.get_label().split()[-1]),
+                sel.target[0],
+                f"{sel.artist.get_label()}\nTiempo: {sel.target[0]:.2f} s\nÁngulo: {sel.target[1]:.2f}º"
+            )
+        ))
+
+    cursor15 = mplcursors.cursor(ax15, hover=True)
+    cursor15.connect("add", lambda sel: 
+        sel.annotation.set_text(
+            obtener_tooltip_completo(
+                sesion_seleccionada,
+                int(sel.artist.get_label().split()[-1]),
+                sel.target[0],
+                f"{sel.artist.get_label()}\nTiempo: {sel.target[0]:.2f} s\nTemp. Motor: {sel.target[1]:.2f}ºC"
+            )
+        ))
+
+    cursor16 = mplcursors.cursor(ax16, hover=True)
+    cursor16.connect("add", lambda sel: 
+        sel.annotation.set_text(
+            obtener_tooltip_suciedad_continua(
+                limites_vueltas,
+                sel.target[0],  # Tiempo
+                sel.target[1]   # Suciedad
+            )
+        ))
     
     canvas_fig.draw()
+
+def obtener_info_clima_hora(sesion, numero_vuelta, tiempo_relativo):
+    # Obtiene información de clima y hora del juego formateada
+    datos_vuelta = sesiones[sesion][numero_vuelta]
+    
+    if not datos_vuelta["duraciones"]:
+        return ""
+    
+    # Buscar el índice más cercano
+    duraciones = np.array(datos_vuelta["duraciones"])
+    idx = (np.abs(duraciones - tiempo_relativo)).argmin()
+    
+    # Obtener datos
+    clima = datos_vuelta["climas"][idx] if idx < len(datos_vuelta["climas"]) else "Desconocido"
+    hora_juego = datos_vuelta["horas_juego"][idx] if idx < len(datos_vuelta["horas_juego"]) else "Desconocida"
+    
+    return f"Clima: {clima}\nHora juego: {hora_juego}"
+
+def obtener_tooltip_completo(sesion, numero_vuelta, tiempo_relativo, texto_base):
+    # Combina el texto base con información de clima y hora del juego
+    info_adicional = obtener_info_clima_hora(sesion, numero_vuelta, tiempo_relativo)
+    return f"{texto_base}\n{info_adicional}"
+
+def obtener_tooltip_trazada(sesion, numero_vuelta, coord_x, coord_y):
+    # Obtiene información para mostrar en tooltips de las trazadas
+    datos_vuelta = sesiones[sesion][numero_vuelta]
+    
+    if not datos_vuelta.get("posiciones"):
+        return f"Vuelta {numero_vuelta}\nSin datos de posición"
+    
+    # Buscar el punto más cercano en las posiciones
+    posiciones = datos_vuelta["posiciones"]
+    distancias = []
+    
+    for i, (x, y, z) in enumerate(posiciones):
+        distancia = np.sqrt((x - coord_x)**2 + (y - coord_y)**2)
+        distancias.append((i, distancia))
+    
+    # Ordenar por distancia y tomar el más cercano
+    distancias.sort(key=lambda x: x[1])
+    idx_cercano = distancias[0][0] if distancias else 0
+    
+    # Obtener datos en ese punto
+    velocidad = datos_vuelta["velocidades"][idx_cercano] if idx_cercano < len(datos_vuelta["velocidades"]) else 0
+    tiempo_transcurrido = datos_vuelta["duraciones"][idx_cercano] if idx_cercano < len(datos_vuelta["duraciones"]) else 0
+    clima = datos_vuelta["climas"][idx_cercano] if idx_cercano < len(datos_vuelta["climas"]) else "Desconocido"
+    hora_juego = datos_vuelta["horas_juego"][idx_cercano] if idx_cercano < len(datos_vuelta["horas_juego"]) else "Desconocida"
+    
+    # Formatear el tiempo transcurrido
+    tiempo_formateado = segundos_a_minutos(tiempo_transcurrido, None)
+    
+    return (f"Vuelta {numero_vuelta}\n"
+            f"Velocidad: {velocidad:.1f} km/h\n"
+            f"Tiempo: {tiempo_formateado}\n"
+            f"Clima: {clima}\n"
+            f"Hora juego: {hora_juego}")
+
+def obtener_tooltip_suciedad_continua(limites_vueltas, tiempo, suciedad_valor):
+    # Encontrar en qué vuelta estamos basado en el tiempo
+    for i, limite in enumerate(limites_vueltas):
+        if limite['inicio'] <= tiempo <= limite['fin']:
+            tiempo_en_vuelta = tiempo - limite['inicio']
+            
+            # Calcular porcentaje completado de la vuelta
+            duracion_vuelta = limite['fin'] - limite['inicio']
+            porcentaje_completado = (tiempo_en_vuelta / duracion_vuelta * 100) if duracion_vuelta > 0 else 0
+            
+            return (f"Vuelta: {limite['numero']}\n"
+                    f"Suciedad: {suciedad_valor:.1f}%\n"
+                    f"Tiempo en vuelta: {tiempo_en_vuelta:.1f}s\n"
+                    f"Completado: {porcentaje_completado:.1f}%")
+    
+    return "No se encontró información para este tiempo"
 
 # Función para exportar el gráfico (añadir al inicio del código, junto a las otras funciones)
 def exportar_grafico(fig, nombre_circuito):
@@ -440,10 +938,10 @@ def cargar_vueltas(event=None):
 root = tk.Tk()
 sesion_seleccionada = None
 root.title("Gráficas de Telemetría")
-root.geometry("1200x900")
+root.geometry("1800x900")
 ancho_pantalla = root.winfo_screenwidth()
 alto_pantalla = root.winfo_screenheight()
-x = (ancho_pantalla - 1200) // 2
+x = (ancho_pantalla - 1800) // 2
 y = (alto_pantalla - 900) // 2
 root.geometry(f"+{x}+{y}")
 
