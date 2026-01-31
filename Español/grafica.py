@@ -23,6 +23,12 @@ marchas = []
 vueltas = []  # Lista de vueltas registradas
 datos_vuelta = {}  # Diccionario para almacenar datos por vuelta
 circuito = "Circuito Desconocido"  # Valor por defecto
+# Variables para la animación
+animacion_activa = False
+animacion_timer = None
+tiempo_animacion = 0
+velocidad_animacion = 1.0  # 1.0 = tiempo real
+puntos_animacion = []  # Para almacenar los puntos de animación por cada línea
 
 # Diccionario para almacenar sesiones
 sesiones = {}
@@ -282,7 +288,11 @@ ax16 = fig.add_subplot(gs[17])  # Suciedad
 ax6  = fig.add_subplot(gs[19])  # Mapa 2D
 
 def actualizar_grafica():
-    global sesion_seleccionada
+    global sesion_seleccionada, animacion_activa, animacion_timer
+    
+    # Detener animación si está activa
+    if animacion_activa:
+        toggle_animacion()
 
     print("Actualizando gráfica...")
     selecciones_vueltas = listbox_vueltas.curselection()
@@ -577,7 +587,6 @@ def actualizar_grafica():
         
         # Superponer segmentos coloreados por vuelta
         # Para esto necesitamos dividir la línea en segmentos por vuelta
-        start_idx = 0
         for limite in limites_vueltas:
             # Encontrar los índices de los puntos que pertenecen a esta vuelta
             puntos_vuelta = []
@@ -654,15 +663,41 @@ def actualizar_grafica():
                            edgecolor='black', zorder=3)
     
     # Ajustar límites del mapa con un margen del 1%
-    todas_x = [p[0] for numero_vuelta in vueltas_seleccionadas if numero_vuelta in datos_vuelta_sesion and "posiciones" in datos_vuelta_sesion[numero_vuelta] for p in datos_vuelta_sesion[numero_vuelta]["posiciones"]]
-    todas_y = [p[1] for numero_vuelta in vueltas_seleccionadas if numero_vuelta in datos_vuelta_sesion and "posiciones" in datos_vuelta_sesion[numero_vuelta] for p in datos_vuelta_sesion[numero_vuelta]["posiciones"]]
-    if todas_x and todas_y:
-        margen_x = (max(todas_x) - min(todas_x)) * 0.01
-        margen_y = (max(todas_y) - min(todas_y)) * 0.01
-        ax6.set_xlim(min(todas_x) - margen_x, max(todas_x) + margen_x)
-        ax6.set_ylim(min(todas_y) - margen_y, max(todas_y) + margen_y)
+    todas_x_pos = [p[0] for numero_vuelta in vueltas_seleccionadas if numero_vuelta in datos_vuelta_sesion and "posiciones" in datos_vuelta_sesion[numero_vuelta] for p in datos_vuelta_sesion[numero_vuelta]["posiciones"]]
+    todas_y_pos = [p[1] for numero_vuelta in vueltas_seleccionadas if numero_vuelta in datos_vuelta_sesion and "posiciones" in datos_vuelta_sesion[numero_vuelta] for p in datos_vuelta_sesion[numero_vuelta]["posiciones"]]
+    if todas_x_pos and todas_y_pos:
+        margen_x = (max(todas_x_pos) - min(todas_x_pos)) * 0.01
+        margen_y = (max(todas_y_pos) - min(todas_y_pos)) * 0.01
+        ax6.set_xlim(min(todas_x_pos) - margen_x, max(todas_x_pos) + margen_x)
+        ax6.set_ylim(min(todas_y_pos) - margen_y, max(todas_y_pos) + margen_y)
     
     ax6.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=7, frameon=True, framealpha=0.8)
+    
+    # Preparar datos para animación - FUERA del bucle anterior
+    global puntos_animacion
+    puntos_animacion = []
+    
+    for idx, numero_vuelta in enumerate(vueltas_seleccionadas):
+        if numero_vuelta not in datos_vuelta_sesion:
+            continue
+        
+        color = colores[idx % len(colores)]
+        if "posiciones" in datos_vuelta_sesion[numero_vuelta]:
+            posiciones = datos_vuelta_sesion[numero_vuelta]["posiciones"]
+            duraciones = datos_vuelta_sesion[numero_vuelta]["duraciones"]
+            
+            if posiciones and duraciones and len(posiciones) > 0 and len(duraciones) > 0:
+                # Crear puntos para animación
+                puntos_animacion.append({
+                    'vuelta': numero_vuelta,
+                    'color': color,
+                    'posiciones': posiciones,
+                    'duraciones': duraciones,
+                    'indice_actual': 0,
+                    'tiempo_acumulado': 0,
+                    'punto_animacion': None,  # Se creará cuando inicie la animación
+                    'linea_completada': False
+                })
     
     fig.suptitle(f"Sesión: {sesion_actual} | Circuito: {circuito_actual}", 
                  fontsize=14, fontweight="bold")
@@ -904,6 +939,119 @@ def obtener_tooltip_suciedad_continua(limites_vueltas, tiempo, suciedad_valor):
     
     return "No se encontró información para este tiempo"
 
+def toggle_animacion():
+    global animacion_activa, animacion_timer, tiempo_animacion
+    
+    if animacion_activa:
+        # Pausar animación
+        animacion_activa = False
+        if animacion_timer:
+            root.after_cancel(animacion_timer)
+            animacion_timer = None
+        boton_animacion.config(text="▶ Play")
+    else:
+        # Iniciar/reanudar animación
+        animacion_activa = True
+        boton_animacion.config(text="⏸ Pause")
+        # Si es la primera vez, empezar desde el tiempo 0
+        if tiempo_animacion == 0:
+            reiniciar_puntos_animacion()
+        iniciar_animacion()
+
+def reiniciar_puntos_animacion():
+    global puntos_animacion, tiempo_animacion
+    tiempo_animacion = 0
+    
+    # Reiniciar todos los puntos de animación
+    for punto in puntos_animacion:
+        punto['indice_actual'] = 0
+        punto['tiempo_acumulado'] = 0
+        punto['linea_completada'] = False
+        
+        # Limpiar punto anterior si existe
+        if punto['punto_animacion']:
+            punto['punto_animacion'].remove()
+            punto['punto_animacion'] = None
+    
+    # Actualizar visualización
+    canvas_fig.draw()
+
+def iniciar_animacion():
+    global animacion_timer, tiempo_animacion, animacion_activa
+    
+    if not animacion_activa:
+        return
+    
+    # Actualizar tiempo de animación
+    tiempo_animacion += 0.05 * velocidad_animacion  # Incremento de 50ms
+    
+    # Actualizar todas las bolitas
+    puntos_activos = 0
+    
+    for punto in puntos_animacion:
+        if punto['linea_completada']:
+            continue
+        
+        # Encontrar la posición actual basada en el tiempo
+        duraciones = punto['duraciones']
+        posiciones = punto['posiciones']
+        
+        if len(duraciones) < 2 or len(posiciones) < 2:
+            continue
+        
+        # Calcular tiempo relativo para esta vuelta
+        tiempo_relativo_vuelta = tiempo_animacion - punto['tiempo_acumulado']
+        
+        # Si todavía estamos dentro de los datos de esta vuelta
+        if tiempo_relativo_vuelta < duraciones[-1]:
+            # Encontrar el segmento actual
+            for i in range(len(duraciones) - 1):
+                if duraciones[i] <= tiempo_relativo_vuelta < duraciones[i + 1]:
+                    # Calcular posición interpolada
+                    t = (tiempo_relativo_vuelta - duraciones[i]) / (duraciones[i + 1] - duraciones[i])
+                    x = posiciones[i][0] + t * (posiciones[i + 1][0] - posiciones[i][0])
+                    y = posiciones[i][1] + t * (posiciones[i + 1][1] - posiciones[i][1])
+                    
+                    # Actualizar o crear el punto de animación
+                    if punto['punto_animacion']:
+                        # CORRECCIÓN: Usar set_offsets para scatter plot
+                        punto['punto_animacion'].set_offsets([[x, y]])
+                    else:
+                        punto['punto_animacion'] = ax6.scatter([x], [y], 
+                                                              color=punto['color'],
+                                                              s=100,  # Tamaño grande
+                                                              edgecolor='white',
+                                                              linewidth=2,
+                                                              zorder=10,
+                                                              alpha=0.9)
+                    puntos_activos += 1
+                    break
+        else:
+            # Esta vuelta ha terminado
+            punto['linea_completada'] = True
+            punto['tiempo_acumulado'] += duraciones[-1]
+            
+            # Colocar el punto en la posición final
+            if punto['punto_animacion']:
+                # CORRECCIÓN: Usar set_offsets para scatter plot
+                punto['punto_animacion'].set_offsets([[posiciones[-1][0], posiciones[-1][1]]])
+    
+    # Actualizar canvas
+    canvas_fig.draw()
+    
+    # Si aún hay puntos activos, programar próximo frame
+    if puntos_activos > 0 or any(not p['linea_completada'] for p in puntos_animacion):
+        animacion_timer = root.after(50, iniciar_animacion)  # 20 FPS (50ms por frame)
+    else:
+        # Todas las animaciones completadas
+        animacion_activa = False
+        boton_animacion.config(text="▶ Play")
+
+def actualizar_velocidad_animacion(valor):
+    global velocidad_animacion
+    velocidad_animacion = float(valor)
+    etiqueta_velocidad.config(text=f"Velocidad: {velocidad_animacion:.1f}x")
+
 # Función para exportar el gráfico (añadir al inicio del código, junto a las otras funciones)
 def exportar_grafico(fig, nombre_circuito):
 
@@ -967,6 +1115,31 @@ tk.Button(marco_control, text="Actualizar", command=actualizar_grafica).pack(sid
 
 boton_exportar = tk.Button(marco_control, text="Exportar Gráficas", command=lambda: exportar_grafico(fig, circuito_por_sesion.get(sesion_seleccionada.split(" - ")[0])))
 boton_exportar.pack(side=tk.RIGHT, padx=5)
+
+# Frame para controles de animación
+frame_animacion = tk.Frame(marco_control)
+frame_animacion.pack(side=tk.RIGHT, padx=10)
+
+# Botón de play/pause
+boton_animacion = tk.Button(frame_animacion, text="▶ Play", command=toggle_animacion, 
+                           font=("Arial", 10, "bold"), bg="#4CAF50", fg="white")
+boton_animacion.pack(side=tk.LEFT, padx=2)
+
+# Botón de reinicio
+boton_reiniciar = tk.Button(frame_animacion, text="↺ Reiniciar", command=reiniciar_puntos_animacion,
+                           font=("Arial", 10))
+boton_reiniciar.pack(side=tk.LEFT, padx=2)
+
+# Control de velocidad
+tk.Label(frame_animacion, text="Vel:").pack(side=tk.LEFT, padx=(5, 0))
+velocidad_slider = tk.Scale(frame_animacion, from_=0.1, to=5.0, resolution=0.1, 
+                           orient=tk.HORIZONTAL, length=100,
+                           command=actualizar_velocidad_animacion)
+velocidad_slider.set(1.0)
+velocidad_slider.pack(side=tk.LEFT, padx=2)
+
+etiqueta_velocidad = tk.Label(frame_animacion, text="Velocidad: 1.0x")
+etiqueta_velocidad.pack(side=tk.LEFT, padx=2)
 
 canvas = tk.Canvas(root)
 canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
