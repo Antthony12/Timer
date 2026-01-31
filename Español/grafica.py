@@ -9,10 +9,12 @@ from datetime import datetime
 import mplcursors
 import numpy as np
 import os
+from matplotlib.patches import Patch
+from matplotlib.lines import Line2D
 
 # Ruta del archivo
-ruta_archivo = r"C:\Users\pato\Desktop\scripts\Logs\telemetriagta5.log"
-ruta_exportaciones = r"C:\Users\pato\Desktop\scripts\Logs\Exportaciones"
+ruta_archivo = r"F:\Logs\telemetriagta5.log"
+ruta_exportaciones = r"F:\Logs\Exportaciones"
 
 # Listas para almacenar datos
 marcas_tiempo = []
@@ -55,6 +57,9 @@ patron_pedal_acelerador = re.compile(r"Pedal Acelerador: ([\d,]+)%")
 patron_temperatura_motor = re.compile(r"Temperatura del motor: ([\d,]+)ºC")
 patron_acelerador = re.compile(r"Acelerador: ([\d,]+)%")
 patron_suciedad = re.compile(r"Nivel de suciedad: ([\d,]+)%")
+patron_luces = re.compile(r"Luces: (True|False)")
+patron_luces_largas = re.compile(r"Luces Largas: (True|False)")
+patron_direccion = re.compile(r"Dirección: \(([\d,-]+), ([\d,-]+), ([\d,-]+)\)")
 
 # Función para limpiar la última línea si es un registro de inicio
 def limpiar_ultima_linea_si_registro(ruta_archivo, inicio_registro):
@@ -113,6 +118,9 @@ with open(ruta_archivo, "r", encoding="utf-8") as archivo:
         coincidencia_pedal_acelerador = patron_pedal_acelerador.search(linea)
         coincidencia_temperatura_motor = patron_temperatura_motor.search(linea)
         coincidencia_suciedad = patron_suciedad.search(linea)
+        coincidencia_luces = patron_luces.search(linea)
+        coincidencia_luces_largas = patron_luces_largas.search(linea)
+        coincidencia_direccion = patron_direccion.search(linea)
 
         if coincidencia_tiempo:
             marca_tiempo_actual = coincidencia_tiempo.group(1)
@@ -136,7 +144,10 @@ with open(ruta_archivo, "r", encoding="utf-8") as archivo:
                     "turbos": [],
                     "pedales_acelerador": [],
                     "temperaturas_motor": [],
-                    "aceleradores": []
+                    "aceleradores": [],
+                    "luces": [],
+                    "luces_largas": [],
+                    "direcciones": []
                 }
             vuelta_actual = numero_vuelta
 
@@ -213,6 +224,27 @@ with open(ruta_archivo, "r", encoding="utf-8") as archivo:
             if "suciedades" not in sesiones[sesion_actual][vuelta_actual]:
                 sesiones[sesion_actual][vuelta_actual]["suciedades"] = []
             sesiones[sesion_actual][vuelta_actual]["suciedades"].append(suciedad)
+
+        if coincidencia_luces and vuelta_actual in sesiones[sesion_actual]:
+            luces = coincidencia_luces.group(1) == "True"
+            if "luces" not in sesiones[sesion_actual][vuelta_actual]:
+                sesiones[sesion_actual][vuelta_actual]["luces"] = []
+            sesiones[sesion_actual][vuelta_actual]["luces"].append(luces)
+
+        if coincidencia_luces_largas and vuelta_actual in sesiones[sesion_actual]:
+            luces_largas = coincidencia_luces_largas.group(1) == "True"
+            if "luces_largas" not in sesiones[sesion_actual][vuelta_actual]:
+                sesiones[sesion_actual][vuelta_actual]["luces_largas"] = []
+            sesiones[sesion_actual][vuelta_actual]["luces_largas"].append(luces_largas)
+
+        if coincidencia_direccion and vuelta_actual in sesiones[sesion_actual]:
+            dx = float(coincidencia_direccion.group(1).replace(",", "."))
+            dy = float(coincidencia_direccion.group(2).replace(",", "."))
+            dz = float(coincidencia_direccion.group(3).replace(",", "."))
+            
+            if "direcciones" not in sesiones[sesion_actual][vuelta_actual]:
+                sesiones[sesion_actual][vuelta_actual]["direcciones"] = []
+            sesiones[sesion_actual][vuelta_actual]["direcciones"].append((dx, dy, dz))
 
 # Función para formatear segundos a mm:ss.ms
 def segundos_a_minutos(segundos, pos=None):
@@ -670,6 +702,15 @@ def actualizar_grafica():
         margen_y = (max(todas_y_pos) - min(todas_y_pos)) * 0.01
         ax6.set_xlim(min(todas_x_pos) - margen_x, max(todas_x_pos) + margen_x)
         ax6.set_ylim(min(todas_y_pos) - margen_y, max(todas_y_pos) + margen_y)
+
+    leyenda_elementos = []
+    leyenda_elementos.append(Line2D([0], [0], color='gray', lw=2, label='Trayectoria'))
+    leyenda_elementos.append(Line2D([0], [0], marker='o', color='w', markerfacecolor='gray', 
+                                markersize=10, label='Inicio'))
+    leyenda_elementos.append(Line2D([0], [0], marker='s', color='w', markerfacecolor='gray',
+                                markersize=10, label='Fin'))
+    leyenda_elementos.append(Patch(facecolor='#FFFF00', alpha=0.15, label='Luces normales'))
+    leyenda_elementos.append(Patch(facecolor='#FFFF00', alpha=0.2, label='Luces largas'))
     
     ax6.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=7, frameon=True, framealpha=0.8)
     
@@ -693,9 +734,13 @@ def actualizar_grafica():
                     'color': color,
                     'posiciones': posiciones,
                     'duraciones': duraciones,
+                    'luces': datos_vuelta_sesion[numero_vuelta].get("luces", []),
+                    'luces_largas': datos_vuelta_sesion[numero_vuelta].get("luces_largas", []),
+                    'direcciones': datos_vuelta_sesion[numero_vuelta].get("direcciones", []),
                     'indice_actual': 0,
                     'tiempo_acumulado': 0,
-                    'punto_animacion': None,  # Se creará cuando inicie la animación
+                    'punto_animacion': None,
+                    'cono_luces': None,
                     'linea_completada': False
                 })
     
@@ -962,19 +1007,137 @@ def reiniciar_puntos_animacion():
     global puntos_animacion, tiempo_animacion
     tiempo_animacion = 0
     
-    # Reiniciar todos los puntos de animación
     for punto in puntos_animacion:
         punto['indice_actual'] = 0
         punto['tiempo_acumulado'] = 0
         punto['linea_completada'] = False
         
-        # Limpiar punto anterior si existe
         if punto['punto_animacion']:
             punto['punto_animacion'].remove()
             punto['punto_animacion'] = None
+        
+        # Limpiar cono de luces
+        if punto.get('cono_luces'):
+            for elemento in punto['cono_luces']:
+                if elemento:
+                    elemento.remove()
+            punto['cono_luces'] = []
     
-    # Actualizar visualización
     canvas_fig.draw()
+
+def calcular_direccion(punto, indice):
+    """
+    Calcula la dirección del vehículo en un punto específico.
+    Primero intenta usar datos de dirección si están disponibles,
+    de lo contrario calcula a partir de la trayectoria.
+    """
+    # Si hay datos de dirección disponibles
+    if 'direcciones' in punto and indice < len(punto['direcciones']):
+        dx, dy, dz = punto['direcciones'][indice]
+        # Normalizar el vector
+        magnitud = np.sqrt(dx*dx + dy*dy)
+        if magnitud > 0:
+            return dx/magnitud, dy/magnitud
+    
+    # Si no hay datos de dirección, calcular a partir de la trayectoria
+    posiciones = punto['posiciones']
+    
+    # Si es el primer punto
+    if indice == 0:
+        if len(posiciones) > 1:
+            dx = posiciones[1][0] - posiciones[0][0]
+            dy = posiciones[1][1] - posiciones[0][1]
+        else:
+            return 1, 0  # Dirección por defecto
+    # Si es el último punto
+    elif indice == len(posiciones) - 1:
+        dx = posiciones[indice][0] - posiciones[indice-1][0]
+        dy = posiciones[indice][1] - posiciones[indice-1][1]
+    # Puntos intermedios
+    else:
+        # Promediar dirección hacia adelante y hacia atrás para suavizar
+        dx_forward = posiciones[indice+1][0] - posiciones[indice][0]
+        dy_forward = posiciones[indice+1][1] - posiciones[indice][1]
+        dx_back = posiciones[indice][0] - posiciones[indice-1][0]
+        dy_back = posiciones[indice][1] - posiciones[indice-1][1]
+        
+        dx = (dx_forward + dx_back) / 2
+        dy = (dy_forward + dy_back) / 2
+    
+    # Normalizar
+    magnitud = np.sqrt(dx*dx + dy*dy)
+    if magnitud > 0:
+        return dx/magnitud, dy/magnitud
+    else:
+        return 1, 0  # Dirección por defecto si no hay movimiento
+
+def dibujar_cono_luces(ax, posicion, direccion, tipo_luces, color_vuelta, cono_anterior=None):
+    """
+    Dibuja un cono de luces similar al de los policías en GTA 5
+    
+    Args:
+        ax: Eje donde dibujar
+        posicion: (x, y) posición actual
+        direccion: (dx, dy) vector dirección normalizado
+        tipo_luces: 0 = apagadas, 1 = luces normales, 2 = luces largas
+        color_vuelta: Color base de la vuelta
+        cono_anterior: Lista de elementos gráficos del cono anterior a limpiar
+    
+    Returns:
+        Lista de elementos gráficos creados
+    """
+    
+    # Limpiar cono anterior si existe
+    if cono_anterior:
+        for elemento in cono_anterior:
+            if elemento:
+                elemento.remove()
+    
+    if tipo_luces == 0:  # Apagadas
+        return []
+    
+    x, y = posicion
+    dx, dy = direccion
+    
+    # Parámetros del cono según tipo de luces
+    if tipo_luces == 1:  # Luces normales
+        longitud = 50
+        angulo = np.radians(60)
+        color = '#FFFF00'
+        alpha = 0.15
+    else:  # Luces largas
+        longitud = 100
+        angulo = np.radians(40)
+        color = '#FFFF00'
+        alpha = 0.2
+    
+    # Calcular ángulo actual
+    angulo_actual = np.arctan2(dy, dx)
+    
+    # Calcular puntos del cono
+    vertices = []
+    vertices.append((x, y))  # Vértice en el coche
+    
+    for ang in [angulo_actual - angulo/2, angulo_actual + angulo/2]:
+        px = x + np.cos(ang) * longitud
+        py = y + np.sin(ang) * longitud
+        vertices.append((px, py))
+    
+    # Crear polígono del cono
+    poligono = ax.fill([v[0] for v in vertices], [v[1] for v in vertices], 
+                      color=color, alpha=alpha, zorder=1, edgecolor='none')[0]
+    
+    # Crear línea central del cono
+    linea_central = ax.plot([x, x + np.cos(angulo_actual) * longitud * 0.7],
+                           [y, y + np.sin(angulo_actual) * longitud * 0.7],
+                           color=color, alpha=0.3, linewidth=1, zorder=2)[0]
+    
+    # Añadir borde al cono (opcional)
+    borde = ax.plot([vertices[1][0], vertices[2][0]], 
+                    [vertices[1][1], vertices[2][1]],
+                    color=color, alpha=0.1, linewidth=0.5, zorder=2)[0]
+    
+    return [poligono, linea_central, borde]
 
 def iniciar_animacion():
     global animacion_timer, tiempo_animacion, animacion_activa
@@ -982,68 +1145,94 @@ def iniciar_animacion():
     if not animacion_activa:
         return
     
-    # Actualizar tiempo de animación
-    tiempo_animacion += 0.05 * velocidad_animacion  # Incremento de 50ms
-    
-    # Actualizar todas las bolitas
+    tiempo_animacion += 0.05 * velocidad_animacion
     puntos_activos = 0
     
     for punto in puntos_animacion:
         if punto['linea_completada']:
             continue
         
-        # Encontrar la posición actual basada en el tiempo
         duraciones = punto['duraciones']
         posiciones = punto['posiciones']
         
         if len(duraciones) < 2 or len(posiciones) < 2:
             continue
         
-        # Calcular tiempo relativo para esta vuelta
         tiempo_relativo_vuelta = tiempo_animacion - punto['tiempo_acumulado']
         
-        # Si todavía estamos dentro de los datos de esta vuelta
         if tiempo_relativo_vuelta < duraciones[-1]:
-            # Encontrar el segmento actual
             for i in range(len(duraciones) - 1):
                 if duraciones[i] <= tiempo_relativo_vuelta < duraciones[i + 1]:
-                    # Calcular posición interpolada
                     t = (tiempo_relativo_vuelta - duraciones[i]) / (duraciones[i + 1] - duraciones[i])
                     x = posiciones[i][0] + t * (posiciones[i + 1][0] - posiciones[i][0])
                     y = posiciones[i][1] + t * (posiciones[i + 1][1] - posiciones[i][1])
                     
-                    # Actualizar o crear el punto de animación
+                    # Calcular dirección
+                    direccion = calcular_direccion(punto, i)
+                    
+                    # Determinar tipo de luces
+                    tipo_luces = 0  # Apagadas
+                    luces = punto.get('luces', [])
+                    luces_largas = punto.get('luces_largas', [])
+                    
+                    if i < len(luces_largas) and luces_largas[i]:
+                        tipo_luces = 2  # Luces largas
+                    elif i < len(luces) and luces[i]:
+                        tipo_luces = 1  # Luces normales
+                    
+                    # Actualizar punto - SIN cambio de color
                     if punto['punto_animacion']:
-                        # CORRECCIÓN: Usar set_offsets para scatter plot
                         punto['punto_animacion'].set_offsets([[x, y]])
                     else:
                         punto['punto_animacion'] = ax6.scatter([x], [y], 
                                                               color=punto['color'],
-                                                              s=100,  # Tamaño grande
+                                                              s=150,
                                                               edgecolor='white',
                                                               linewidth=2,
                                                               zorder=10,
                                                               alpha=0.9)
+                    
+                    # Dibujar cono de luces (limpiando el anterior)
+                    cono_anterior = punto.get('cono_luces', [])
+                    if tipo_luces > 0:
+                        cono_nuevo = dibujar_cono_luces(ax6, (x, y), direccion, 
+                                                       tipo_luces, punto['color'], 
+                                                       cono_anterior)
+                        punto['cono_luces'] = cono_nuevo
+                    else:
+                        # Si las luces están apagadas, limpiar cualquier cono anterior
+                        if cono_anterior:
+                            for elemento in cono_anterior:
+                                if elemento:
+                                    elemento.remove()
+                            punto['cono_luces'] = []
+                    
                     puntos_activos += 1
                     break
         else:
-            # Esta vuelta ha terminado
+            # Vuelta completada
             punto['linea_completada'] = True
             punto['tiempo_acumulado'] += duraciones[-1]
             
-            # Colocar el punto en la posición final
+            # Actualizar posición final del punto
             if punto['punto_animacion']:
-                # CORRECCIÓN: Usar set_offsets para scatter plot
                 punto['punto_animacion'].set_offsets([[posiciones[-1][0], posiciones[-1][1]]])
+            
+            # Limpiar cono al finalizar
+            cono_actual = punto.get('cono_luces', [])
+            if cono_actual:
+                for elemento in cono_actual:
+                    if elemento:
+                        elemento.remove()
+                punto['cono_luces'] = []
     
     # Actualizar canvas
     canvas_fig.draw()
     
-    # Si aún hay puntos activos, programar próximo frame
+    # Continuar animación si hay puntos activos
     if puntos_activos > 0 or any(not p['linea_completada'] for p in puntos_animacion):
-        animacion_timer = root.after(50, iniciar_animacion)  # 20 FPS (50ms por frame)
+        animacion_timer = root.after(50, iniciar_animacion)
     else:
-        # Todas las animaciones completadas
         animacion_activa = False
         boton_animacion.config(text="▶ Play")
 
@@ -1052,9 +1241,8 @@ def actualizar_velocidad_animacion(valor):
     velocidad_animacion = float(valor)
     etiqueta_velocidad.config(text=f"Velocidad: {velocidad_animacion:.1f}x")
 
-# Función para exportar el gráfico (añadir al inicio del código, junto a las otras funciones)
+# Función para exportar el gráfico
 def exportar_grafico(fig, nombre_circuito):
-
     # Generar nombre de archivo con fecha/hora
     fecha_hora = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
     ruta_archivo = f"{ruta_exportaciones}\\{nombre_circuito}_{fecha_hora}.png"
@@ -1132,7 +1320,7 @@ boton_reiniciar.pack(side=tk.LEFT, padx=2)
 
 # Control de velocidad
 tk.Label(frame_animacion, text="Vel:").pack(side=tk.LEFT, padx=(5, 0))
-velocidad_slider = tk.Scale(frame_animacion, from_=0.1, to=5.0, resolution=0.1, 
+velocidad_slider = tk.Scale(frame_animacion, from_=0.1, to=10.0, resolution=0.1, 
                            orient=tk.HORIZONTAL, length=100,
                            command=actualizar_velocidad_animacion)
 velocidad_slider.set(1.0)
